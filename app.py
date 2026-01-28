@@ -18,7 +18,7 @@ if not api_key:
     st.stop()
 
 genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-pro')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 tab1, tab2 = st.tabs(["📝 Tanya Teks", "📸 Tanya Gambar"])
 
