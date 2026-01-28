@@ -1,77 +1,148 @@
 import streamlit as st
 import google.generativeai as genai
-from PIL import Image
 
-# 1. Konfigurasi Halaman
-st.set_page_config(page_title="Guru Saku AI", page_icon="⚡")
+# --- 1. KONFIGURASI HALAMAN ---
+st.set_page_config(page_title="Guru Saku AI", page_icon="🎓", layout="wide")
 
-st.title("⚡ Guru Saku AI (Gemini 2.5 Flash)")
-st.write("Tanya apa saja, dijawab secepat kilat!")
+# Inisialisasi Session State (Agar data tidak hilang saat klik tombol)
+if 'kurikulum' not in st.session_state:
+    st.session_state.kurikulum = []
+if 'materi_sekarang' not in st.session_state:
+    st.session_state.materi_sekarang = ""
+if 'kuis_sekarang' not in st.session_state:
+    st.session_state.kuis_sekarang = ""
 
-# 2. Ambil API Key (Otomatis dari Secrets atau Manual)
+# --- 2. SETUP API KEY ---
+# Cek di Secrets atau Sidebar
 if "GOOGLE_API_KEY" in st.secrets:
     api_key = st.secrets["GOOGLE_API_KEY"]
 else:
     api_key = st.sidebar.text_input("Masukkan API Key:", type="password")
 
 if not api_key:
-    st.warning("⚠️ Masukkan API Key dulu ya.")
+    st.warning("⚠️ Masukkan API Key di sidebar kiri dulu ya.")
     st.stop()
 
-# 3. Konfigurasi Model (SUDAH DIUPDATE KE 2.5)
+# Setup Model (Pakai Gemini 2.5 Flash yang tersedia di akunmu)
 genai.configure(api_key=api_key)
-
-# Kita pakai model yang TERSEDIA di akunmu: 'gemini-2.5-flash'
 try:
     model = genai.GenerativeModel('gemini-2.5-flash')
-except Exception as e:
-    st.error(f"Error memuat model: {e}")
-    st.stop()
+except:
+    model = genai.GenerativeModel('gemini-2.0-flash')
 
-# 4. Tampilan Menu (Tabs)
-tab1, tab2 = st.tabs(["📝 Tanya Teks", "📸 Tanya Gambar"])
-
-# === TAB 1: TEKS ===
-with tab1:
-    st.header("Mode Chat Cepat")
-    pertanyaan = st.text_area("Apa yang ingin kamu ketahui?", height=100, placeholder="Contoh: Buatkan ide konten TikTok tentang kopi...")
+# --- 3. SIDEBAR (KOLOM KIRI: INPUT & DAFTAR ISI) ---
+with st.sidebar:
+    st.title("🎛️ Panel Kontrol")
     
-    if st.button("Kirim Pertanyaan 🚀", key="btn_text"):
-        if pertanyaan:
-            with st.spinner('Flash sedang berpikir...'):
+    # Input Topik
+    topik_belajar = st.text_input("Mau belajar apa?", placeholder="Misal: Fisika Kuantum")
+    
+    # Pilihan Gaya Belajar (Sesuai Konsep Awal)
+    gaya_belajar = st.selectbox(
+        "Gaya Belajar:",
+        [
+            "👶 ELI5 (Jelaskan seperti saya umur 5 tahun)",
+            "💡 Penuh Analogi (Pakai benda sehari-hari)",
+            "🏫 Akademis & Serius (Untuk kuliah)",
+            "🧠 Socratic (Pancing saya berpikir, jangan langsung jawab)"
+        ]
+    )
+
+    # Tombol Buat Kurikulum
+    if st.button("Buat Rencana Belajar 📝"):
+        if topik_belajar:
+            with st.spinner("Menyusun kurikulum..."):
                 try:
-                    response = model.generate_content(pertanyaan)
-                    st.success("Selesai!")
-                    st.markdown(response.text)
+                    # Prompt khusus untuk membuat Silabus JSON-like sederhana
+                    prompt_silabus = f"""
+                    Buatkan silabus belajar untuk topik: '{topik_belajar}'.
+                    Bagi menjadi 5 BAB UTAMA yang berurutan dari dasar ke mahir.
+                    Hanya berikan daftar judul babnya saja. Jangan ada teks lain.
+                    Format:
+                    1. Judul Bab 1
+                    2. Judul Bab 2
+                    ...
+                    """
+                    response = model.generate_content(prompt_silabus)
+                    # Membersihkan text agar jadi list rapi
+                    raw_text = response.text.strip().split('\n')
+                    st.session_state.kurikulum = [line for line in raw_text if line.strip()]
+                    st.session_state.materi_sekarang = "" # Reset materi
+                    st.session_state.kuis_sekarang = ""   # Reset kuis
+                    st.success("Kurikulum siap! Pilih bab di bawah.")
                 except Exception as e:
-                    st.error(f"Terjadi kesalahan: {e}")
-        else:
-            st.warning("Jangan lupa ketik pertanyaannya dulu.")
+                    st.error(f"Gagal: {e}")
 
-# === TAB 2: GAMBAR ===
-with tab2:
-    st.header("Mode Analisis Visual")
-    uploaded_file = st.file_uploader("Upload fotomu di sini", type=["jpg", "jpeg", "png", "webp"])
+    st.markdown("---")
     
-    if uploaded_file is not None:
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Preview Gambar", use_container_width=True)
-        
-        prompt_gambar = st.text_input("Pertanyaan tentang gambar:", placeholder="Jelaskan apa yang ada di gambar ini")
-        
-        if st.button("Analisis Gambar 📸", key="btn_img"):
-            if prompt_gambar:
-                with st.spinner('Sedang melihat gambar...'):
-                    try:
-                        # Mengirim Gambar + Teks
-                        response = model.generate_content([prompt_gambar, image])
-                        st.markdown("### 💡 Hasil Analisis:")
-                        st.markdown(response.text)
-                    except Exception as e:
-                        st.error(f"Gagal memproses gambar: {e}")
-            else:
-                st.warning("Berikan instruksi dulu, misal: 'Jelaskan gambar ini'")
+    # --- DAFTAR ISI DINAMIS ---
+    # Bagian ini hanya muncul kalau kurikulum sudah dibuat
+    pilihan_bab = None
+    if st.session_state.kurikulum:
+        st.header("📚 Daftar Isi Materi")
+        pilihan_bab = st.radio("Pilih Bab untuk Mulai:", st.session_state.kurikulum)
 
-# Footer
-st.markdown("---")
-st.caption("Powered by Google Gemini 2.5 Flash")
+# --- 4. KOLOM TENGAH (MATERI & KUIS) ---
+st.title("🎓 Guru Saku AI")
+
+if not st.session_state.kurikulum:
+    st.info("👈 Masukkan topik di Sidebar kiri, lalu klik 'Buat Rencana Belajar' untuk memulai.")
+    st.markdown("""
+    **Fitur Utama:**
+    * **Syllabus Generator:** Membuat peta belajar otomatis.
+    * **Analogy Master:** Menjelaskan konsep rumit jadi mudah.
+    * **Auto-Quiz:** Tes pemahamanmu di setiap bab.
+    """)
+
+else:
+    # Jika User memilih bab, generate materi
+    if pilihan_bab:
+        st.subheader(f"Sedang Mempelajari: {pilihan_bab}")
+        
+        # Tombol untuk memuat materi bab ini
+        if st.button("📖 Buka Materi Bab Ini"):
+            with st.spinner(f"Guru sedang menjelaskan {pilihan_bab}..."):
+                try:
+                    prompt_materi = f"""
+                    Saya sedang belajar: '{topik_belajar}'.
+                    Bab saat ini: '{pilihan_bab}'.
+                    Gaya penjelasan: '{gaya_belajar}'.
+                    
+                    Tugasmu:
+                    1. Jelaskan materi bab ini secara mendalam sesuai gaya yang dipilih.
+                    2. Jika gaya 'Socratic' dipilih, ajukan pertanyaan retoris.
+                    3. Jika gaya 'Analogi' dipilih, wajib pakai perumpamaan benda nyata.
+                    4. Gunakan format Markdown rapi (Bold, List, Code block jika perlu).
+                    """
+                    response = model.generate_content(prompt_materi)
+                    st.session_state.materi_sekarang = response.text
+                    st.session_state.kuis_sekarang = "" # Reset kuis kalau ganti materi
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+        # Menampilkan Materi
+        if st.session_state.materi_sekarang:
+            st.markdown("---")
+            st.markdown(st.session_state.materi_sekarang)
+            
+            st.markdown("---")
+            st.write("### 🧠 Uji Pemahaman")
+            
+            # Tombol Kuis (Fitur Evaluasi)
+            if st.button("Saya sudah paham, beri saya Kuis! 📝"):
+                with st.spinner("Membuat soal..."):
+                    try:
+                        prompt_kuis = f"""
+                        Berdasarkan materi '{pilihan_bab}' tentang '{topik_belajar}'.
+                        Buatkan 3 Soal Pilihan Ganda sederhana untuk menguji pemahaman user.
+                        Di bagian bawah, berikan Kunci Jawaban tersembunyi (di dalam toggle/spoiler jika bisa, atau tulis 'Kunci Jawaban:' di paling bawah).
+                        """
+                        response = model.generate_content(prompt_kuis)
+                        st.session_state.kuis_sekarang = response.text
+                    except Exception as e:
+                        st.error(f"Gagal buat kuis: {e}")
+
+            # Menampilkan Kuis
+            if st.session_state.kuis_sekarang:
+                st.info("Jawab pertanyaan ini dalam hati, lalu cek kunci jawaban di bawah.")
+                st.markdown(st.session_state.kuis_sekarang)
