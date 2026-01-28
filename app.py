@@ -4,7 +4,48 @@ import re # Library untuk mencari kode diagram dalam teks
 
 # --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Guru Saku AI Pro", page_icon="🎓", layout="wide")
+import streamlit as st
+import google.generativeai as genai
+import re
 
+# --- 1. KONFIGURASI HALAMAN ---
+st.set_page_config(page_title="Guru Saku AI", page_icon="🎓", layout="wide")
+
+# ==========================================
+# 🔒 FITUR KEAMANAN (PASSWORD PROTECTION)
+# ==========================================
+# Cek apakah password sudah benar di sesi ini
+if 'is_logged_in' not in st.session_state:
+    st.session_state.is_logged_in = False
+
+def check_password():
+    # Ambil password dari Input User
+    input_pw = st.session_state.input_password
+    # Ambil password asli dari Secrets
+    if "RAHASIA_SAYA" in st.secrets:
+        kunci_asli = st.secrets["RAHASIA_SAYA"]
+    else:
+        kunci_asli = "admin123" # Password cadangan kalau lupa set secrets
+
+    if input_pw == kunci_asli:
+        st.session_state.is_logged_in = True
+        # Bersihkan input box supaya password gak kelihatan
+        st.session_state.input_password = ""
+    else:
+        st.error("Password Salah! Minggir lu! 😤")
+
+# JIKA BELUM LOGIN, TAMPILKAN LAYAR LOGIN SAJA
+if not st.session_state.is_logged_in:
+    st.title("🔒 Aplikasi Terkunci")
+    st.text_input("Masukkan Password:", type="password", key="input_password", on_change=check_password)
+    st.stop()  # <--- INI PENTING: Menghentikan program di sini. Orang gak bisa lanjut ke bawah.
+
+# ==========================================
+# JIKA SUDAH LOGIN, BARU JALANKAN KODE DI BAWAH INI
+# ==========================================
+
+# ... (LANJUTKAN DENGAN KODE LAMA KAMU DARI SINI KE BAWAH) ...
+# Mulai dari: if 'kurikulum' not in st.session_state: ...
 # Inisialisasi Session State
 if 'kurikulum' not in st.session_state:
     st.session_state.kurikulum = []
