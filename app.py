@@ -1,19 +1,21 @@
 import streamlit as st
 import google.generativeai as genai
+import re # Library untuk mencari kode diagram dalam teks
 
 # --- 1. KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="Guru Saku AI", page_icon="🎓", layout="wide")
+st.set_page_config(page_title="Guru Saku AI Pro", page_icon="🎓", layout="wide")
 
-# Inisialisasi Session State (Agar data tidak hilang saat klik tombol)
+# Inisialisasi Session State
 if 'kurikulum' not in st.session_state:
     st.session_state.kurikulum = []
 if 'materi_sekarang' not in st.session_state:
     st.session_state.materi_sekarang = ""
 if 'kuis_sekarang' not in st.session_state:
     st.session_state.kuis_sekarang = ""
+if 'diagram_code' not in st.session_state:
+    st.session_state.diagram_code = ""
 
 # --- 2. SETUP API KEY ---
-# Cek di Secrets atau Sidebar
 if "GOOGLE_API_KEY" in st.secrets:
     api_key = st.secrets["GOOGLE_API_KEY"]
 else:
@@ -23,126 +25,124 @@ if not api_key:
     st.warning("⚠️ Masukkan API Key di sidebar kiri dulu ya.")
     st.stop()
 
-# Setup Model (Pakai Gemini 2.5 Flash yang tersedia di akunmu)
 genai.configure(api_key=api_key)
+# Menggunakan Gemini 2.5 Flash (Cepat & Pintar)
 try:
     model = genai.GenerativeModel('gemini-2.5-flash')
 except:
     model = genai.GenerativeModel('gemini-2.0-flash')
 
-# --- 3. SIDEBAR (KOLOM KIRI: INPUT & DAFTAR ISI) ---
+# --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🎛️ Panel Kontrol")
+    topik_belajar = st.text_input("Mau belajar apa?", placeholder="Misal: Metamorfosis Kupu-kupu")
     
-    # Input Topik
-    topik_belajar = st.text_input("Mau belajar apa?", placeholder="Misal: Fisika Kuantum")
-    
-    # Pilihan Gaya Belajar (Sesuai Konsep Awal)
     gaya_belajar = st.selectbox(
         "Gaya Belajar:",
-        [
-            "👶 ELI5 (Jelaskan seperti saya umur 5 tahun)",
-            "💡 Penuh Analogi (Pakai benda sehari-hari)",
-            "🏫 Akademis & Serius (Untuk kuliah)",
-            "🧠 Socratic (Pancing saya berpikir, jangan langsung jawab)"
-        ]
+        ["👶 ELI5 (Mudah & Simpel)", "💡 Visual & Analogi", "🏫 Akademis (Kuliah)", "🧠 Socratic (Tanya Jawab)"]
     )
 
-    # Tombol Buat Kurikulum
     if st.button("Buat Rencana Belajar 📝"):
         if topik_belajar:
             with st.spinner("Menyusun kurikulum..."):
                 try:
-                    # Prompt khusus untuk membuat Silabus JSON-like sederhana
-                    prompt_silabus = f"""
-                    Buatkan silabus belajar untuk topik: '{topik_belajar}'.
-                    Bagi menjadi 5 BAB UTAMA yang berurutan dari dasar ke mahir.
-                    Hanya berikan daftar judul babnya saja. Jangan ada teks lain.
-                    Format:
-                    1. Judul Bab 1
-                    2. Judul Bab 2
-                    ...
-                    """
+                    prompt_silabus = f"Buatkan silabus 5 BAB untuk topik '{topik_belajar}'. Hanya list judul bab saja."
                     response = model.generate_content(prompt_silabus)
-                    # Membersihkan text agar jadi list rapi
                     raw_text = response.text.strip().split('\n')
                     st.session_state.kurikulum = [line for line in raw_text if line.strip()]
-                    st.session_state.materi_sekarang = "" # Reset materi
-                    st.session_state.kuis_sekarang = ""   # Reset kuis
-                    st.success("Kurikulum siap! Pilih bab di bawah.")
+                    # Reset state lama
+                    st.session_state.materi_sekarang = ""
+                    st.session_state.kuis_sekarang = ""
+                    st.session_state.diagram_code = ""
+                    st.success("Kurikulum siap!")
                 except Exception as e:
                     st.error(f"Gagal: {e}")
 
     st.markdown("---")
-    
-    # --- DAFTAR ISI DINAMIS ---
-    # Bagian ini hanya muncul kalau kurikulum sudah dibuat
     pilihan_bab = None
     if st.session_state.kurikulum:
-        st.header("📚 Daftar Isi Materi")
-        pilihan_bab = st.radio("Pilih Bab untuk Mulai:", st.session_state.kurikulum)
+        st.header("📚 Daftar Isi")
+        pilihan_bab = st.radio("Pilih Bab:", st.session_state.kurikulum)
 
-# --- 4. KOLOM TENGAH (MATERI & KUIS) ---
-st.title("🎓 Guru Saku AI")
+# --- 4. AREA UTAMA ---
+st.title("🎓 Guru Saku AI: Edisi Visual")
 
 if not st.session_state.kurikulum:
-    st.info("👈 Masukkan topik di Sidebar kiri, lalu klik 'Buat Rencana Belajar' untuk memulai.")
-    st.markdown("""
-    **Fitur Utama:**
-    * **Syllabus Generator:** Membuat peta belajar otomatis.
-    * **Analogy Master:** Menjelaskan konsep rumit jadi mudah.
-    * **Auto-Quiz:** Tes pemahamanmu di setiap bab.
-    """)
-
+    st.info("👈 Mulai dengan memasukkan topik di sebelah kiri.")
 else:
-    # Jika User memilih bab, generate materi
     if pilihan_bab:
-        st.subheader(f"Sedang Mempelajari: {pilihan_bab}")
+        st.subheader(f"Bab: {pilihan_bab}")
         
-        # Tombol untuk memuat materi bab ini
-        if st.button("📖 Buka Materi Bab Ini"):
-            with st.spinner(f"Guru sedang menjelaskan {pilihan_bab}..."):
+        # Tombol Buka Materi
+        if st.button("📖 Buka Materi & Diagram"):
+            with st.spinner(f"Guru sedang menggambar diagram & menulis materi..."):
                 try:
+                    # PROMPT CANGGIH: Minta Materi + Kode Diagram Graphviz
                     prompt_materi = f"""
-                    Saya sedang belajar: '{topik_belajar}'.
-                    Bab saat ini: '{pilihan_bab}'.
-                    Gaya penjelasan: '{gaya_belajar}'.
+                    Saya belajar: '{topik_belajar}', Bab: '{pilihan_bab}'.
+                    Gaya: '{gaya_belajar}'.
                     
-                    Tugasmu:
-                    1. Jelaskan materi bab ini secara mendalam sesuai gaya yang dipilih.
-                    2. Jika gaya 'Socratic' dipilih, ajukan pertanyaan retoris.
-                    3. Jika gaya 'Analogi' dipilih, wajib pakai perumpamaan benda nyata.
-                    4. Gunakan format Markdown rapi (Bold, List, Code block jika perlu).
+                    Tugas 1: Jelaskan materi secara lengkap dan rapi (Markdown).
+                    
+                    Tugas 2: Buatkan diagram visual (Mind Map atau Alur Proses) yang menjelaskan poin utama bab ini.
+                    Gunakan format kode **Graphviz DOT**.
+                    Letakkan kode diagram di DALAM blok code seperti ini:
+                    ```dot
+                    digraph G {{
+                      rankdir=LR;
+                      node [style=filled, fillcolor=lightblue];
+                      "Konsep A" -> "Konsep B";
+                    }}
+                    ```
+                    Pastikan syntax DOT valid dan sederhana.
                     """
+                    
                     response = model.generate_content(prompt_materi)
-                    st.session_state.materi_sekarang = response.text
-                    st.session_state.kuis_sekarang = "" # Reset kuis kalau ganti materi
+                    full_text = response.text
+                    
+                    # Logika Pemisahan Teks dan Diagram
+                    # Kita cari teks yang diapit ```dot ... ```
+                    diagram_match = re.search(r'```dot(.*?)```', full_text, re.DOTALL)
+                    
+                    if diagram_match:
+                        st.session_state.diagram_code = diagram_match.group(1).strip()
+                        # Hapus kode diagram dari teks materi agar tidak dobel
+                        st.session_state.materi_sekarang = full_text.replace(diagram_match.group(0), "")
+                    else:
+                        st.session_state.diagram_code = ""
+                        st.session_state.materi_sekarang = full_text
+                        
+                    st.session_state.kuis_sekarang = "" 
+
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-        # Menampilkan Materi
+        # TAMPILKAN HASIL
         if st.session_state.materi_sekarang:
+            # 1. Tampilkan Diagram (Jika ada)
+            if st.session_state.diagram_code:
+                st.write("### 🧩 Peta Konsep Visual")
+                try:
+                    st.graphviz_chart(st.session_state.diagram_code)
+                except:
+                    st.warning("Gagal merender diagram, tapi materi tetap aman.")
+            
+            # 2. Tombol Cari Gambar Asli (Google Image)
+            url_gambar = f"https://www.google.com/search?tbm=isch&q={topik_belajar}+{pilihan_bab}"
+            st.link_button(f"🔍 Cari Foto Asli '{pilihan_bab}' di Google", url_gambar)
+
+            # 3. Tampilkan Materi Teks
             st.markdown("---")
             st.markdown(st.session_state.materi_sekarang)
             
+            # 4. Bagian Kuis
             st.markdown("---")
-            st.write("### 🧠 Uji Pemahaman")
-            
-            # Tombol Kuis (Fitur Evaluasi)
-            if st.button("Saya sudah paham, beri saya Kuis! 📝"):
+            if st.button("Uji Pemahaman (Kuis) 📝"):
                 with st.spinner("Membuat soal..."):
-                    try:
-                        prompt_kuis = f"""
-                        Berdasarkan materi '{pilihan_bab}' tentang '{topik_belajar}'.
-                        Buatkan 3 Soal Pilihan Ganda sederhana untuk menguji pemahaman user.
-                        Di bagian bawah, berikan Kunci Jawaban tersembunyi (di dalam toggle/spoiler jika bisa, atau tulis 'Kunci Jawaban:' di paling bawah).
-                        """
-                        response = model.generate_content(prompt_kuis)
-                        st.session_state.kuis_sekarang = response.text
-                    except Exception as e:
-                        st.error(f"Gagal buat kuis: {e}")
+                    prompt_kuis = f"Buatkan 3 soal pilgan pendek tentang {pilihan_bab}. Kunci jawaban di akhir (spoiler)."
+                    res = model.generate_content(prompt_kuis)
+                    st.session_state.kuis_sekarang = res.text
 
-            # Menampilkan Kuis
             if st.session_state.kuis_sekarang:
-                st.info("Jawab pertanyaan ini dalam hati, lalu cek kunci jawaban di bawah.")
+                st.info("Kuis Kilat:")
                 st.markdown(st.session_state.kuis_sekarang)
