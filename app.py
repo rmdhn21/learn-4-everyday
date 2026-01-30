@@ -17,29 +17,70 @@ st.markdown("""
     html, body, [class*="css"] { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
     .stButton>button {
         border-radius: 12px; font-weight: bold; border: none;
-        background-color: #2E86C1; color: white; transition: all 0.3s ease;
+        background-color: #0068C9; color: white; transition: all 0.3s ease;
     }
-    .stButton>button:hover { background-color: #1B4F72; transform: scale(1.02); }
-    h1, h2, h3 { color: #2C3E50; }
+    .stButton>button:hover { background-color: #004B91; transform: scale(1.02); }
+    /* Styling container diagram agar tidak menempel ke tepi */
+    .graphviz-box {
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 10px;
+        background-color: white;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🔒 PASSWORD PROTECTION
+# ⚙️ FUNGSI PEMBERSIH KODE (THE SURGEON)
+# ==========================================
+def bersihkan_kode_dot(text):
+    """
+    Fungsi Bedah: Mencari 'digraph' dan mengambil isinya sampai kurung kurawal penutup yang pas.
+    Mengabaikan teks sampah di awal dan akhir.
+    """
+    # 1. Cari posisi awal kata 'digraph'
+    start_index = text.find("digraph")
+    if start_index == -1:
+        return None # Gak ketemu diagram
+
+    # 2. Mulai hitung kurung kurawal dari posisi digraph
+    balance = 0 # Penghitung keseimbangan kurung
+    found_first_brace = False
+    end_index = -1
+
+    for i in range(start_index, len(text)):
+        char = text[i]
+        
+        if char == '{':
+            balance += 1
+            found_first_brace = True
+        elif char == '}':
+            balance -= 1
+        
+        # Jika sudah pernah nemu '{' dan balance kembali ke 0, berarti itu ujung kode
+        if found_first_brace and balance == 0:
+            end_index = i + 1
+            break
+    
+    if end_index != -1:
+        return text[start_index:end_index]
+    else:
+        return None
+
+# ==========================================
+# 🔒 PASSWORD PROTECTION & SETUP
 # ==========================================
 if 'is_logged_in' not in st.session_state:
     st.session_state.is_logged_in = False
 
 def check_password():
     input_pw = st.session_state.input_password
-    # Ganti "admin123" dengan passwordmu
     kunci_asli = st.secrets.get("RAHASIA_SAYA", "admin123")
-    
     if input_pw == kunci_asli:
         st.session_state.is_logged_in = True
         st.session_state.input_password = ""
     else:
-        st.error("Password Salah! Coba lagi.")
+        st.error("Password Salah!")
 
 if not st.session_state.is_logged_in:
     st.title("🔒 Login Guru Saku")
@@ -48,28 +89,18 @@ if not st.session_state.is_logged_in:
         st.text_input("Masukkan Password:", type="password", key="input_password", on_change=check_password)
     st.stop()
 
-# ==========================================
-# ⚙️ SETUP UTAMA
-# ==========================================
-# Inisialisasi Memory
-for key, default_val in {
-    'kurikulum': [],
-    'materi_sekarang': "",
-    'quiz_data': None,
-    'diagram_code': "", 
-    'topik_saat_ini': ""
-}.items():
-    if key not in st.session_state:
-        st.session_state[key] = default_val
+# Inisialisasi State
+for key, default_val in {'kurikulum': [], 'materi_sekarang': "", 'quiz_data': None, 'diagram_code': "", 'topik_saat_ini': ""}.items():
+    if key not in st.session_state: st.session_state[key] = default_val
 
-# Ambil API Key
+# API Key
 if "GOOGLE_API_KEY" in st.secrets:
     api_key = st.secrets["GOOGLE_API_KEY"]
 else:
     api_key = st.sidebar.text_input("Masukkan Gemini API Key:", type="password")
 
 if not api_key:
-    st.sidebar.warning("⚠️ API Key diperlukan.")
+    st.sidebar.warning("⚠️ Masukkan API Key dulu.")
     st.stop()
 
 genai.configure(api_key=api_key)
@@ -83,155 +114,126 @@ except:
 # ==========================================
 
 with st.sidebar:
-    st.title("🎛️ Panel Kontrol")
+    st.title("🎛️ Kontrol Belajar")
     with st.container(border=True):
-        topik_input = st.text_input("Topik Belajar:", placeholder="Contoh: Digital Marketing")
-        gaya_belajar = st.selectbox("Gaya Penjelasan:", ["👶 Pemula (Mudah)", "💡 Visual & Analogi", "🏫 Kuliah (Teoritis)", "🚀 Praktis (To-the-point)"])
+        topik_input = st.text_input("Topik:", placeholder="Cth: Fotosintesis")
+        gaya_belajar = st.selectbox("Gaya:", ["👶 Pemula", "💡 Visual", "🏫 Akademis", "🚀 Praktis"])
 
-        if st.button("Buat Kurikulum 📋"):
+        if st.button("Buat Kurikulum"):
             if topik_input:
                 st.session_state.topik_saat_ini = topik_input
-                with st.spinner("Sedang menyusun silabus..."):
+                with st.spinner("Menyusun..."):
                     try:
-                        prompt = f"Buatkan daftar 5 Judul Bab untuk belajar '{topik_input}'. Hanya list bab saja."
+                        prompt = f"Buat 5 Judul Bab belajar '{topik_input}'. Hanya list bab."
                         res = model.generate_content(prompt)
-                        clean_list = [line.strip().lstrip('1234567890.- ') for line in res.text.split('\n') if line.strip()]
-                        st.session_state.kurikulum = clean_list[:5]
-                        
-                        # Reset layar kanan
+                        clean = [line.strip().lstrip('1234567890.- ') for line in res.text.split('\n') if line.strip()]
+                        st.session_state.kurikulum = clean[:5]
                         st.session_state.materi_sekarang = ""
-                        st.session_state.quiz_data = None
                         st.session_state.diagram_code = ""
-                        st.toast("Kurikulum Siap!", icon="✅")
-                    except Exception as e:
-                        st.error(f"Gagal: {e}")
-            else:
-                st.warning("Isi topiknya dulu.")
+                        st.session_state.quiz_data = None
+                        st.toast("Siap!")
+                    except Exception as e: st.error(f"Error: {e}")
+            else: st.warning("Isi topik dulu.")
 
-    st.markdown("---")
-    pilihan_bab = None
     if st.session_state.kurikulum:
+        st.markdown("---")
         st.subheader("📚 Daftar Isi")
         pilihan_bab = st.radio("Pilih Bab:", st.session_state.kurikulum, label_visibility="collapsed")
+    else:
+        pilihan_bab = None
 
 # --- AREA UTAMA ---
 if not st.session_state.kurikulum:
-    st.title("👋 Selamat Datang!")
-    st.info("👈 Mulai dengan mengisi topik di Sidebar kiri.")
+    st.title("👋 Guru Saku AI")
+    st.info("Mulai dengan mengisi topik di menu kiri.")
 
 else:
     if pilihan_bab:
         st.header(f"🎓 {st.session_state.topik_saat_ini}")
-        st.caption(f"Sedang mempelajari: {pilihan_bab}")
+        st.caption(f"Bab: {pilihan_bab}")
         
-        tab_materi, tab_kuis = st.tabs(["📖 Materi & Visual", "📝 Uji Kompetensi"])
+        tab_materi, tab_kuis = st.tabs(["📖 Materi & Diagram", "📝 Kuis"])
 
         # === TAB MATERI ===
         with tab_materi:
             if st.button("✨ Buka Materi Bab Ini", use_container_width=True):
-                with st.spinner("Guru sedang menulis materi & menggambar diagram..."):
+                with st.spinner("Menyiapkan materi dan menggambar diagram..."):
                     try:
-                        # PROMPT SANGAT TEGAS AGAR OUTPUTNYA BENAR
+                        # PROMPT DIAGRAM YANG LEBIH SPESIFIK
                         prompt_materi = f"""
                         Saya belajar '{st.session_state.topik_saat_ini}', Bab '{pilihan_bab}'.
                         Gaya: {gaya_belajar}.
                         
-                        Tugas 1: Jelaskan materi secara lengkap (Markdown).
+                        Tugas 1: Jelaskan materi lengkap (Markdown).
                         
-                        Tugas 2: Buatkan DIAGRAM (Peta Konsep) menggunakan kode **Graphviz DOT**.
-                        - Gunakan `node [style="filled", fillcolor="lightblue", shape="box"]`.
-                        - Layout `rankdir=LR`.
-                        
-                        PENTING: Tulis kode diagram di bagian PALING BAWAH, diawali kata 'digraph' dan diakhiri kurung kurawal tutup '}}'.
+                        Tugas 2: Buat DIAGRAM Peta Konsep (Graphviz DOT).
+                        - Gunakan `digraph G {{ ... }}`.
+                        - Node style: `node [style="filled", fillcolor="lightblue", shape="box", fontname="Arial"]`.
+                        - Rankdir: LR (Kiri ke Kanan).
+                        - Sertakan diagram di akhir respons.
                         """
                         response = model.generate_content(prompt_materi)
                         text_full = response.text
                         
-                        # --- LOGIKA RADAR (EXTRACTION) ---
-                        # Kita cari kata 'digraph' sampai kurung tutup terakhir '}'
-                        # Tidak peduli ada tanda ``` atau tidak.
+                        # --- EKSEKUSI FUNGSI BEDAH KODE ---
+                        # Kita ambil kode bersihnya saja
+                        kode_bersih = bersihkan_kode_dot(text_full)
                         
-                        # 1. Coba cari pattern code block dulu (paling aman)
-                        match = re.search(r'```(dot|graphviz)(.*?)```', text_full, re.DOTALL)
-                        
-                        if match:
-                            st.session_state.diagram_code = match.group(2).strip()
-                            st.session_state.materi_sekarang = text_full.replace(match.group(0), "").strip()
+                        if kode_bersih:
+                            st.session_state.diagram_code = kode_bersih
+                            # Hapus kode mentah dari teks materi agar rapi
+                            # Kita hapus mulai dari kata 'digraph' sampai akhir teks materi (kasarnya)
+                            idx = text_full.find("digraph")
+                            st.session_state.materi_sekarang = text_full[:idx].strip()
                         else:
-                            # 2. PLAN B: Cari manual kata 'digraph'
-                            if "digraph" in text_full:
-                                start_index = text_full.find("digraph")
-                                # Anggap sisanya adalah kode (sampai akhir)
-                                potential_code = text_full[start_index:]
-                                # Bersihkan sedikit kalau ada sisa text di bawahnya (opsional)
-                                last_brace = potential_code.rfind("}")
-                                if last_brace != -1:
-                                    potential_code = potential_code[:last_brace+1]
-                                
-                                st.session_state.diagram_code = potential_code
-                                # Hapus kode dari materi agar tidak dobel
-                                st.session_state.materi_sekarang = text_full[:start_index].strip()
-                            else:
-                                st.session_state.diagram_code = ""
-                                st.session_state.materi_sekarang = text_full
+                            st.session_state.diagram_code = ""
+                            st.session_state.materi_sekarang = text_full
                         
-                        st.session_state.quiz_data = None # Reset kuis
+                        st.session_state.quiz_data = None 
                         
                     except Exception as e:
                         st.error(f"Error: {e}")
 
-            # TAMPILKAN HASIL
+            # RENDER HASIL
             if st.session_state.materi_sekarang:
-                # 1. Tampilkan Diagram (JIKA ADA KODE)
+                # 1. BAGIAN DIAGRAM (Ditaruh di atas agar terlihat duluan)
                 if st.session_state.diagram_code:
-                    st.markdown("### 🧩 Peta Konsep Visual")
-                    with st.expander("Klik untuk Perbesar Diagram", expanded=True):
+                    st.markdown("### 🧩 Peta Konsep")
+                    with st.expander("Klik untuk Memperbesar Diagram", expanded=True):
                         try:
+                            # Render diagram graphviz
                             st.graphviz_chart(st.session_state.diagram_code, use_container_width=True)
                         except Exception as e:
-                            st.error("Maaf, diagram gagal digambar.")
-                            # Tampilkan kodenya biar kita tau salahnya dimana
-                            with st.expander("Lihat Kode Error"):
-                                st.code(st.session_state.diagram_code)
+                            st.error("Diagram error syntax.")
+                            st.code(st.session_state.diagram_code) # Tampilkan kode jika error buat debug
                     st.markdown("---")
                 
-                # 2. Tampilkan Teks
+                # 2. BAGIAN TEKS
                 st.markdown(st.session_state.materi_sekarang)
 
-        # === TAB KUIS (Sama seperti sebelumnya) ===
+        # === TAB KUIS (Logic tetap sama) ===
         with tab_kuis:
-            st.write("### 📝 Kuis Pemahaman")
-            if st.button("🎲 Generate 5 Soal", key="btn_soal"):
-                with st.spinner("Membuat soal..."):
+            st.write("### 📝 Kuis")
+            if st.button("🎲 Buat Kuis"):
+                with st.spinner("Bikin soal..."):
                     try:
-                        p_kuis = f"""
-                        Buat 5 Soal Pilihan Ganda tentang '{pilihan_bab}'.
-                        Format JSON murni:
-                        [
-                          {{"question":"...", "options":["A","B","C","D"], "answer":"A", "explanation":"..."}},
-                          ...
-                        ]
-                        """
-                        res = model.generate_content(p_kuis)
-                        json_text = res.text.replace("```json","").replace("```","").strip()
-                        st.session_state.quiz_data = json.loads(json_text)
-                    except:
-                        st.error("Gagal membuat soal. Coba lagi.")
-
+                        res = model.generate_content(f"Buat 5 Soal Pilgan tentang {pilihan_bab}. Output JSON murni: [{{'question':'..','options':['A','B'],'answer':'A','explanation':'..'}}]")
+                        clean_json = res.text.replace("```json","").replace("```","").strip()
+                        st.session_state.quiz_data = json.loads(clean_json)
+                    except: st.error("Gagal buat soal.")
+            
             if st.session_state.quiz_data:
-                with st.form("quiz_form"):
-                    user_ans = {}
+                with st.form("q"):
+                    ans = {}
                     for i, q in enumerate(st.session_state.quiz_data):
                         st.markdown(f"**{i+1}. {q['question']}**")
-                        user_ans[i] = st.radio(f"Jawaban {i+1}", q['options'], key=f"q{i}", label_visibility="collapsed")
+                        ans[i] = st.radio("Jawab:", q['options'], key=f"q{i}", label_visibility="collapsed")
                         st.write("")
-                    
-                    if st.form_submit_button("Cek Nilai"):
-                        score = 0
+                    if st.form_submit_button("Cek"):
+                        sc = 0
                         for i, q in enumerate(st.session_state.quiz_data):
-                            if user_ans[i] == q['answer']:
-                                score += 1
-                                st.success(f"No {i+1}: Benar! ({q['explanation']})")
-                            else:
-                                st.error(f"No {i+1}: Salah. Jawaban: {q['answer']}")
-                                st.caption(f"Penjelasan: {q['explanation']}")
+                            if ans[i]==q['answer']: sc+=1; st.success(f"No {i+1}: Benar!")
+                            else: st.error(f"No {i+1}: Salah. Jawabannya {q['answer']}")
+                            st.caption(q['explanation'])
+                        st.metric("Nilai", f"{(sc/len(st.session_state.quiz_data))*100:.0f}")
+                        
