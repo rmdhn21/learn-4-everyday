@@ -3,32 +3,37 @@ import google.generativeai as genai
 import re
 import json
 
-# --- 1. KONFIGURASI HALAMAN ---
+# --- 1. KONFIGURASI HALAMAN & CUSTOM CSS ---
 st.set_page_config(
-    page_title="Guru Saku AI Pro",
-    page_icon="🎨",
+    page_title="Guru Saku AI",
+    page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS & UI
+# Custom CSS untuk tampilan UI yang bersih
 st.markdown("""
 <style>
+    /* Font modern */
     html, body, [class*="css"] { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+    
+    /* Tombol yang lebih menarik */
     .stButton>button {
-        border-radius: 20px; font-weight: bold; border: none;
-        background-color: #4B4BFF; color: white; transition: all 0.3s ease;
+        border-radius: 12px; font-weight: bold; border: none;
+        background-color: #2E86C1; color: white; transition: all 0.3s ease;
+        padding: 0.5rem 1rem;
     }
-    .stButton>button:hover { background-color: #3333CC; transform: scale(1.02); }
-    /* Styling khusus untuk kontainer SVG agar punya background putih (biar terlihat di Dark Mode) */
-    .svg-container {
-        background-color: #ffffff;
-        border-radius: 15px;
-        padding: 20px;
-        text-align: center;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    .stButton>button:hover { background-color: #1B4F72; transform: scale(1.02); }
+    
+    /* Styling Container Materi */
+    div[data-testid="stExpander"] {
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        background-color: #f9f9f9;
     }
+    
+    /* Header styling */
+    h1, h2, h3 { color: #2C3E50; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -40,18 +45,17 @@ if 'is_logged_in' not in st.session_state:
 
 def check_password():
     input_pw = st.session_state.input_password
-    if "RAHASIA_SAYA" in st.secrets:
-        kunci_asli = st.secrets["RAHASIA_SAYA"]
-    else:
-        kunci_asli = "admin123" 
+    # Ganti "admin123" dengan password yang kamu mau
+    kunci_asli = st.secrets.get("RAHASIA_SAYA", "admin123")
+    
     if input_pw == kunci_asli:
         st.session_state.is_logged_in = True
         st.session_state.input_password = ""
     else:
-        st.error("Password Salah! 😤")
+        st.error("Password Salah! Coba lagi.")
 
 if not st.session_state.is_logged_in:
-    st.title("🔒 Aplikasi Terkunci")
+    st.title("🔒 Login Guru Saku")
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         st.text_input("Masukkan Password:", type="password", key="input_password", on_change=check_password)
@@ -60,208 +64,188 @@ if not st.session_state.is_logged_in:
 # ==========================================
 # ⚙️ SETUP UTAMA
 # ==========================================
+# Inisialisasi State (Memory)
 for key, default_val in {
     'kurikulum': [],
     'materi_sekarang': "",
     'quiz_data': None,
-    'svg_code': "", 
+    'diagram_code': "", 
     'topik_saat_ini': ""
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default_val
 
+# Ambil API Key
 if "GOOGLE_API_KEY" in st.secrets:
     api_key = st.secrets["GOOGLE_API_KEY"]
 else:
-    with st.sidebar.expander("🔑 Pengaturan API Key"):
-        api_key = st.text_input("Masukkan Gemini API Key:", type="password")
+    api_key = st.sidebar.text_input("Masukkan Gemini API Key:", type="password")
 
 if not api_key:
-    st.sidebar.warning("⚠️ API Key belum dimasukkan.")
+    st.sidebar.warning("⚠️ API Key diperlukan.")
     st.stop()
 
 genai.configure(api_key=api_key)
+# Prioritaskan model Flash yang cepat
 try:
     model = genai.GenerativeModel('gemini-2.5-flash')
 except:
     model = genai.GenerativeModel('gemini-2.0-flash')
-
-# --- FUNGSI BARU: RENDER SVG LANGSUNG ---
-def render_svg_safe(svg_code):
-    """Membersihkan dan menampilkan SVG secara langsung (Inline HTML)"""
-    try:
-        # 1. Bersihkan kode dari markdown tick (```xml atau ```svg)
-        clean_code = re.sub(r'```(xml|svg)?', '', svg_code).replace('```', '').strip()
-        
-        # 2. Pastikan tag <svg> ada xmlns agar valid
-        if "<svg" in clean_code and "xmlns" not in clean_code:
-            clean_code = clean_code.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"')
-            
-        # 3. Tampilkan dalam Div HTML dengan background putih
-        html_code = f'<div class="svg-container">{clean_code}</div>'
-        st.markdown(html_code, unsafe_allow_html=True)
-    except Exception as e:
-        st.error(f"Gagal menampilkan gambar: {e}")
-        st.code(svg_code) # Tampilkan kodenya buat debug kalau error
 
 # ==========================================
 # 🖥️ TAMPILAN APLIKASI
 # ==========================================
 
 with st.sidebar:
-    st.title("🎨 Guru Saku Control")
+    st.title("🎛️ Panel Kontrol")
     with st.container(border=True):
-        topik_input = st.text_input("Belajar apa hari ini?", placeholder="Misal: Bisnis Kopi")
-        gaya_belajar = st.selectbox("Gaya Belajar:", ["👶 ELI5 (Simpel)", "💡 Visual & Analogi", "🏫 Akademis", "🧠 Socratic"])
+        topik_input = st.text_input("Topik Belajar:", placeholder="Contoh: Digital Marketing")
+        gaya_belajar = st.selectbox("Gaya Penjelasan:", ["👶 Pemula (Mudah)", "💡 Visual & Analogi", "🏫 Kuliah (Teoritis)", "🚀 Praktis (To-the-point)"])
 
-        if st.button("🚀 Buat Kurikulum"):
+        if st.button("Buat Kurikulum 📋"):
             if topik_input:
                 st.session_state.topik_saat_ini = topik_input
-                with st.spinner("Merancang peta belajar..."):
+                with st.spinner("Sedang menyusun silabus..."):
                     try:
-                        prompt_silabus = f"Buatkan silabus 5 BAB untuk topik '{topik_input}'. Hanya list judul bab."
-                        response = model.generate_content(prompt_silabus)
-                        raw_text = response.text.strip().split('\n')
-                        cleaned_list = [re.sub(r'^[\d\.\-\*\s]+', '', line).strip() for line in raw_text if line.strip()]
-                        st.session_state.kurikulum = cleaned_list
+                        # Prompt Kurikulum
+                        prompt = f"Buatkan daftar 5 Judul Bab untuk belajar '{topik_input}'. Hanya list bab saja tanpa angka/bullet."
+                        res = model.generate_content(prompt)
+                        # Bersihkan output jadi list
+                        clean_list = [line.strip().lstrip('1234567890.- ') for line in res.text.split('\n') if line.strip()]
+                        st.session_state.kurikulum = clean_list[:5] # Ambil 5 teratas
                         
-                        # Reset
+                        # Reset layar kanan
                         st.session_state.materi_sekarang = ""
                         st.session_state.quiz_data = None
-                        st.session_state.svg_code = ""
-                        st.toast("Siap belajar!", icon="✅")
+                        st.session_state.diagram_code = ""
+                        st.toast("Kurikulum Siap!", icon="✅")
                     except Exception as e:
                         st.error(f"Gagal: {e}")
             else:
-                st.toast("Isi topik dulu!", icon="⚠️")
+                st.warning("Isi topiknya dulu.")
 
     st.markdown("---")
     pilihan_bab = None
     if st.session_state.kurikulum:
-        st.header("📚 Daftar Materi")
+        st.subheader("📚 Daftar Isi")
         pilihan_bab = st.radio("Pilih Bab:", st.session_state.kurikulum, label_visibility="collapsed")
 
-# --- MAIN CONTENT ---
+# --- AREA UTAMA ---
 if not st.session_state.kurikulum:
-    st.title("👋 Guru Saku: Edisi Infografis")
-    st.write("Belajar jadi lebih seru dengan rangkuman visual otomatis.")
-    col1, col2 = st.columns(2)
-    with col1: st.info("🖼️ **Infografis Otomatis**\n\nAI akan menggambar poster visual untuk setiap bab.")
-    with col2: st.success("📝 **Kuis & Nilai**\n\nCek pemahamanmu langsung dengan skor real-time.")
+    st.title("👋 Selamat Datang!")
+    st.markdown("""
+    Aplikasi ini akan membantumu belajar apa saja dengan struktur yang rapi.
+    
+    1. **Masukkan Topik** di menu kiri.
+    2. **Pilih Bab** yang ingin dipelajari.
+    3. **Dapatkan Materi** teks + visual diagram otomatis.
+    4. **Kerjakan Kuis** untuk tes pemahaman.
+    """)
+    st.info("👈 Mulai dengan mengisi topik di Sidebar kiri.")
 
 else:
     if pilihan_bab:
-        st.title(f"🎓 {st.session_state.topik_saat_ini}")
-        st.caption(f"Bab: {pilihan_bab}")
+        st.header(f"🎓 {st.session_state.topik_saat_ini}")
+        st.caption(f"Sedang mempelajari: {pilihan_bab}")
         
-        tab_materi, tab_kuis = st.tabs(["🖼️ Materi & Infografis", "📝 Kuis Interaktif"])
+        tab_materi, tab_kuis = st.tabs(["📖 Materi & Visual", "📝 Uji Kompetensi"])
 
-        # === TAB 1: MATERI & INFOGRAFIS ===
+        # === TAB MATERI ===
         with tab_materi:
-            if st.button("✨ Buka Materi & Infografis", use_container_width=True):
-                with st.spinner(f"Sedang mendesain infografis & menulis materi..."):
+            if st.button("✨ Buka Materi Bab Ini", use_container_width=True):
+                with st.spinner("Guru sedang menulis materi & menggambar diagram..."):
                     try:
+                        # PROMPT RAHASIA: Meminta Graphviz dengan Style Infografis
                         prompt_materi = f"""
-                        Saya belajar: '{st.session_state.topik_saat_ini}', Bab: '{pilihan_bab}'.
-                        Gaya: '{gaya_belajar}'.
+                        Saya belajar '{st.session_state.topik_saat_ini}', Bab '{pilihan_bab}'.
+                        Gaya: {gaya_belajar}.
                         
-                        Tugas 1: Jelaskan materi bab ini secara lengkap (Markdown).
+                        Tugas 1: Jelaskan materi secara lengkap dan rapi (Markdown).
                         
-                        Tugas 2: Buatkan INFOGRAFIS visual dalam format kode **SVG**.
-                        - Gunakan elemen <svg>, <rect>, <circle>, <text>, <path>.
-                        - Warna-warna: flat design (biru muda, oranye, putih).
-                        - Sertakan EMOJI di dalam tag <text> sebagai ikon.
-                        - Ukuran: viewBox="0 0 800 400".
-                        - Pastikan kode SVG VALID dan LENGKAP (ditutup </svg>).
+                        Tugas 2: Buatkan DIAGRAM VISUAL (Peta Konsep) menggunakan kode **Graphviz DOT**.
+                        Syarat Diagram:
+                        - Gunakan `node [style="filled", shape="note", fillcolor="#E8DAEF", fontname="Helvetica"]`.
+                        - Gunakan warna-warna cerah (pastel) untuk node yang berbeda.
+                        - Sertakan EMOJI di dalam label node agar menarik.
+                        - Layout dari kiri ke kanan (`rankdir=LR`).
                         
-                        PENTING: Bungkus kode SVG dengan format:
-                        ```xml
-                        <svg ...> ... </svg>
+                        Outputkan kode Graphviz di dalam blok:
+                        ```dot
+                        digraph G {{ ... }}
                         ```
                         """
                         response = model.generate_content(prompt_materi)
-                        full_text = response.text
+                        text_full = response.text
                         
-                        # Regex lebih longgar agar menangkap variasi output AI
-                        svg_match = re.search(r'```(xml|svg)?(.*?)```', full_text, re.DOTALL)
-                        
-                        if svg_match:
-                            # Ambil grup ke-2 (isinya saja)
-                            potential_svg = svg_match.group(2).strip()
-                            # Pastikan itu benar-benar SVG
-                            if "<svg" in potential_svg:
-                                st.session_state.svg_code = potential_svg
-                                # Hapus kode dari teks materi
-                                st.session_state.materi_sekarang = full_text.replace(svg_match.group(0), "").strip()
-                            else:
-                                st.session_state.svg_code = ""
-                                st.session_state.materi_sekarang = full_text
+                        # Ekstrak Kode DOT Graphviz
+                        match = re.search(r'```dot(.*?)```', text_full, re.DOTALL)
+                        if match:
+                            st.session_state.diagram_code = match.group(1).strip()
+                            # Hapus kode diagram dari teks bacaan
+                            st.session_state.materi_sekarang = text_full.replace(match.group(0), "").strip()
                         else:
-                            # Coba cari manual kalau regex gagal (fallback)
-                            if "<svg" in full_text and "</svg>" in full_text:
-                                start = full_text.find("<svg")
-                                end = full_text.find("</svg>") + 6
-                                st.session_state.svg_code = full_text[start:end]
-                                st.session_state.materi_sekarang = full_text.replace(st.session_state.svg_code, "")
-                            else:
-                                st.session_state.svg_code = ""
-                                st.session_state.materi_sekarang = full_text
-                            
-                        st.session_state.quiz_data = None
+                            st.session_state.diagram_code = ""
+                            st.session_state.materi_sekarang = text_full
+                        
+                        st.session_state.quiz_data = None # Reset kuis
+                        
                     except Exception as e:
                         st.error(f"Error: {e}")
 
+            # TAMPILKAN HASIL
             if st.session_state.materi_sekarang:
-                # TAMPILKAN INFOGRAFIS (Langsung Render HTML)
-                if st.session_state.svg_code:
-                    st.write("### 🎨 Infografis Ringkasan")
-                    render_svg_safe(st.session_state.svg_code)
-                    st.caption("Gambar di-generate otomatis via Kode SVG")
+                # 1. Tampilkan Diagram (Pasti Muncul)
+                if st.session_state.diagram_code:
+                    st.markdown("### 🧩 Peta Konsep Visual")
+                    with st.expander("Klik untuk Memperbesar Diagram", expanded=True):
+                        try:
+                            st.graphviz_chart(st.session_state.diagram_code, use_container_width=True)
+                            st.caption("Diagram dihasilkan otomatis oleh AI.")
+                        except:
+                            st.error("Gagal merender diagram.")
                     st.markdown("---")
-
-                # TAMPILKAN TEKS
+                
+                # 2. Tampilkan Teks
                 st.markdown(st.session_state.materi_sekarang)
 
-        # === TAB 2: KUIS ===
+        # === TAB KUIS ===
         with tab_kuis:
-            st.write("Uji pemahamanmu sekarang!")
-            if st.button("🎲 Buat Soal Kuis", use_container_width=True):
+            st.write("### 📝 Kuis Pemahaman")
+            if st.button("🎲 Generate 5 Soal", key="btn_soal"):
                 with st.spinner("Membuat soal..."):
                     try:
-                        prompt_quiz = f"""
-                        Buat 10 Soal Pilgan tentang '{pilihan_bab}'.
-                        Output JSON Murni list of objects:
+                        p_kuis = f"""
+                        Buat 5 Soal Pilihan Ganda tentang '{pilihan_bab}'.
+                        Format JSON murni:
                         [
-                            {{ "question": "...", "options": ["A", "B", "C", "D"], "answer": "A", "explanation": "..." }}, ...
+                          {{"question":"...", "options":["A","B","C","D"], "answer":"A", "explanation":"..."}},
+                          ...
                         ]
-                        Pastikan 'answer' sama persis dengan salah satu 'options'.
                         """
-                        response = model.generate_content(prompt_quiz)
-                        text_json = response.text.replace("```json", "").replace("```", "").strip()
-                        st.session_state.quiz_data = json.loads(text_json)
+                        res = model.generate_content(p_kuis)
+                        json_text = res.text.replace("```json","").replace("```","").strip()
+                        st.session_state.quiz_data = json.loads(json_text)
                     except:
-                        st.error("Gagal buat soal, coba klik lagi.")
+                        st.error("Gagal membuat soal. Coba lagi.")
 
             if st.session_state.quiz_data:
-                with st.form("kuis_form"):
-                    user_answers = {}
+                with st.form("quiz_form"):
+                    user_ans = {}
                     for i, q in enumerate(st.session_state.quiz_data):
                         st.markdown(f"**{i+1}. {q['question']}**")
-                        user_answers[i] = st.radio(f"Jawab {i+1}", q['options'], key=f"s{i}", label_visibility="collapsed")
+                        user_ans[i] = st.radio(f"Jawaban {i+1}", q['options'], key=f"q{i}", label_visibility="collapsed")
                         st.write("")
                     
-                    if st.form_submit_button("✅ Cek Nilai"):
-                        benar = 0
+                    if st.form_submit_button("Cek Nilai"):
+                        score = 0
                         for i, q in enumerate(st.session_state.quiz_data):
-                            with st.expander(f"Soal {i+1}: {'✅ Benar' if user_answers[i]==q['answer'] else '❌ Salah'}"):
-                                if user_answers[i] == q['answer']:
-                                    benar += 1
-                                    st.success(f"Jawabanmu Benar: {q['answer']}")
-                                else:
-                                    st.error(f"Jawabanmu: {user_answers[i]}")
-                                    st.success(f"Kunci: {q['answer']}")
-                                st.info(f"Pembahasan: {q['explanation']}")
+                            if user_ans[i] == q['answer']:
+                                score += 1
+                                st.success(f"No {i+1}: Benar! ({q['explanation']})")
+                            else:
+                                st.error(f"No {i+1}: Salah. Jawaban: {q['answer']}")
+                                st.caption(f"Penjelasan: {q['explanation']}")
                         
-                        nilai = (benar/len(st.session_state.quiz_data))*100
-                        st.metric("Nilai Kamu", f"{nilai:.0f}")
-                        if nilai == 100: st.balloons()
+                        final = (score / len(st.session_state.quiz_data)) * 100
+                        st.metric("Skor Kamu", f"{final:.0f}")
+                        if final == 100: st.balloons()
