@@ -2,9 +2,8 @@ import streamlit as st
 import google.generativeai as genai
 import re
 import json
-import base64
 
-# --- 1. KONFIGURASI HALAMAN & CUSTOM CSS ---
+# --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(
     page_title="Guru Saku AI Pro",
     page_icon="🎨",
@@ -12,20 +11,23 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS untuk UI Cantik
+# Custom CSS & UI
 st.markdown("""
 <style>
     html, body, [class*="css"] { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
-    .stTextInput>div>div>input, .stSelectbox>div>div>div { border-radius: 10px; }
     .stButton>button {
         border-radius: 20px; font-weight: bold; border: none;
         background-color: #4B4BFF; color: white; transition: all 0.3s ease;
     }
     .stButton>button:hover { background-color: #3333CC; transform: scale(1.02); }
-    h1, h2, h3 { color: #1E1E2E; font-weight: 800; }
-    .infographic-box {
-        border: 2px solid #e0e0e0; border-radius: 15px; padding: 10px;
-        background-color: #ffffff; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    /* Styling khusus untuk kontainer SVG agar punya background putih (biar terlihat di Dark Mode) */
+    .svg-container {
+        background-color: #ffffff;
+        border-radius: 15px;
+        padding: 20px;
+        text-align: center;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -58,12 +60,11 @@ if not st.session_state.is_logged_in:
 # ==========================================
 # ⚙️ SETUP UTAMA
 # ==========================================
-# Inisialisasi State
 for key, default_val in {
     'kurikulum': [],
     'materi_sekarang': "",
     'quiz_data': None,
-    'svg_code': "", # Ganti diagram_code jadi svg_code
+    'svg_code': "", 
     'topik_saat_ini': ""
 }.items():
     if key not in st.session_state:
@@ -85,12 +86,23 @@ try:
 except:
     model = genai.GenerativeModel('gemini-2.0-flash')
 
-# Fungsi render SVG agar bisa ditampilkan sebagai gambar
-def render_svg(svg_string):
-    """Menerjemahkan kode SVG menjadi gambar yang bisa ditampilkan Streamlit"""
-    b64 = base64.b64encode(svg_string.encode('utf-8')).decode("utf-8")
-    html = r'<img src="data:image/svg+xml;base64,%s" width="100%%"/>' % b64
-    st.markdown(html, unsafe_allow_html=True)
+# --- FUNGSI BARU: RENDER SVG LANGSUNG ---
+def render_svg_safe(svg_code):
+    """Membersihkan dan menampilkan SVG secara langsung (Inline HTML)"""
+    try:
+        # 1. Bersihkan kode dari markdown tick (```xml atau ```svg)
+        clean_code = re.sub(r'```(xml|svg)?', '', svg_code).replace('```', '').strip()
+        
+        # 2. Pastikan tag <svg> ada xmlns agar valid
+        if "<svg" in clean_code and "xmlns" not in clean_code:
+            clean_code = clean_code.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"')
+            
+        # 3. Tampilkan dalam Div HTML dengan background putih
+        html_code = f'<div class="svg-container">{clean_code}</div>'
+        st.markdown(html_code, unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f"Gagal menampilkan gambar: {e}")
+        st.code(svg_code) # Tampilkan kodenya buat debug kalau error
 
 # ==========================================
 # 🖥️ TAMPILAN APLIKASI
@@ -99,7 +111,7 @@ def render_svg(svg_string):
 with st.sidebar:
     st.title("🎨 Guru Saku Control")
     with st.container(border=True):
-        topik_input = st.text_input("Belajar apa hari ini?", placeholder="Misal: Metamorfosis")
+        topik_input = st.text_input("Belajar apa hari ini?", placeholder="Misal: Bisnis Kopi")
         gaya_belajar = st.selectbox("Gaya Belajar:", ["👶 ELI5 (Simpel)", "💡 Visual & Analogi", "🏫 Akademis", "🧠 Socratic"])
 
         if st.button("🚀 Buat Kurikulum"):
@@ -112,7 +124,8 @@ with st.sidebar:
                         raw_text = response.text.strip().split('\n')
                         cleaned_list = [re.sub(r'^[\d\.\-\*\s]+', '', line).strip() for line in raw_text if line.strip()]
                         st.session_state.kurikulum = cleaned_list
-                        # Reset State
+                        
+                        # Reset
                         st.session_state.materi_sekarang = ""
                         st.session_state.quiz_data = None
                         st.session_state.svg_code = ""
@@ -148,52 +161,65 @@ else:
             if st.button("✨ Buka Materi & Infografis", use_container_width=True):
                 with st.spinner(f"Sedang mendesain infografis & menulis materi..."):
                     try:
-                        # PROMPT SVG INFOGRAFIS
                         prompt_materi = f"""
                         Saya belajar: '{st.session_state.topik_saat_ini}', Bab: '{pilihan_bab}'.
                         Gaya: '{gaya_belajar}'.
                         
                         Tugas 1: Jelaskan materi bab ini secara lengkap (Markdown).
                         
-                        Tugas 2: Buatkan INFOGRAFIS visual dalam format kode **SVG (Scalable Vector Graphics)**.
-                        - Gunakan warna-warna cerah dan kontras (flat design).
-                        - Gunakan bentuk (rect, circle) dan teks untuk menjelaskan poin utama.
-                        - WAJIB sertakan EMOJI sebagai ikon di dalam SVG (karena SVG support emoji).
-                        - Layout harus rapi, ukuran viewBox="0 0 800 400".
-                        - Jangan terlalu banyak teks di dalam SVG, cukup poin kunci.
+                        Tugas 2: Buatkan INFOGRAFIS visual dalam format kode **SVG**.
+                        - Gunakan elemen <svg>, <rect>, <circle>, <text>, <path>.
+                        - Warna-warna: flat design (biru muda, oranye, putih).
+                        - Sertakan EMOJI di dalam tag <text> sebagai ikon.
+                        - Ukuran: viewBox="0 0 800 400".
+                        - Pastikan kode SVG VALID dan LENGKAP (ditutup </svg>).
                         
-                        Letakkan kode SVG di DALAM blok code:
-                        ```svg
+                        PENTING: Bungkus kode SVG dengan format:
+                        ```xml
                         <svg ...> ... </svg>
                         ```
                         """
                         response = model.generate_content(prompt_materi)
                         full_text = response.text
                         
-                        # Ekstrak SVG
-                        svg_match = re.search(r'```svg(.*?)```', full_text, re.DOTALL)
+                        # Regex lebih longgar agar menangkap variasi output AI
+                        svg_match = re.search(r'```(xml|svg)?(.*?)```', full_text, re.DOTALL)
+                        
                         if svg_match:
-                            st.session_state.svg_code = svg_match.group(1).strip()
-                            st.session_state.materi_sekarang = full_text.replace(svg_match.group(0), "").strip()
+                            # Ambil grup ke-2 (isinya saja)
+                            potential_svg = svg_match.group(2).strip()
+                            # Pastikan itu benar-benar SVG
+                            if "<svg" in potential_svg:
+                                st.session_state.svg_code = potential_svg
+                                # Hapus kode dari teks materi
+                                st.session_state.materi_sekarang = full_text.replace(svg_match.group(0), "").strip()
+                            else:
+                                st.session_state.svg_code = ""
+                                st.session_state.materi_sekarang = full_text
                         else:
-                            st.session_state.svg_code = ""
-                            st.session_state.materi_sekarang = full_text
+                            # Coba cari manual kalau regex gagal (fallback)
+                            if "<svg" in full_text and "</svg>" in full_text:
+                                start = full_text.find("<svg")
+                                end = full_text.find("</svg>") + 6
+                                st.session_state.svg_code = full_text[start:end]
+                                st.session_state.materi_sekarang = full_text.replace(st.session_state.svg_code, "")
+                            else:
+                                st.session_state.svg_code = ""
+                                st.session_state.materi_sekarang = full_text
                             
                         st.session_state.quiz_data = None
                     except Exception as e:
                         st.error(f"Error: {e}")
 
             if st.session_state.materi_sekarang:
-                # TAMPILKAN INFOGRAFIS SVG
+                # TAMPILKAN INFOGRAFIS (Langsung Render HTML)
                 if st.session_state.svg_code:
                     st.write("### 🎨 Infografis Ringkasan")
-                    with st.expander("Perbesar Infografis (Zoom)", expanded=True):
-                        # Render SVG sebagai gambar
-                        render_svg(st.session_state.svg_code)
-                        st.caption("Gambar ini dibuat otomatis oleh kode AI.")
+                    render_svg_safe(st.session_state.svg_code)
+                    st.caption("Gambar di-generate otomatis via Kode SVG")
                     st.markdown("---")
 
-                # TAMPILKAN TEKS MATERI
+                # TAMPILKAN TEKS
                 st.markdown(st.session_state.materi_sekarang)
 
         # === TAB 2: KUIS ===
@@ -214,7 +240,7 @@ else:
                         text_json = response.text.replace("```json", "").replace("```", "").strip()
                         st.session_state.quiz_data = json.loads(text_json)
                     except:
-                        st.error("Gagal buat soal, coba lagi.")
+                        st.error("Gagal buat soal, coba klik lagi.")
 
             if st.session_state.quiz_data:
                 with st.form("kuis_form"):
