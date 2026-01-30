@@ -1,4 +1,6 @@
 streamlit
 google-generativeai>=0.8.3
-pillow
+groq
 gTTS
+requests
+Pillow
