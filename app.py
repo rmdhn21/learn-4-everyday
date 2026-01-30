@@ -3,7 +3,7 @@ import google.generativeai as genai
 import re
 import json
 
-# --- 1. KONFIGURASI HALAMAN & CUSTOM CSS ---
+# --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(
     page_title="Guru Saku AI",
     page_icon="🎓",
@@ -11,28 +11,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS untuk tampilan UI yang bersih
+# Custom CSS
 st.markdown("""
 <style>
-    /* Font modern */
     html, body, [class*="css"] { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
-    
-    /* Tombol yang lebih menarik */
     .stButton>button {
         border-radius: 12px; font-weight: bold; border: none;
         background-color: #2E86C1; color: white; transition: all 0.3s ease;
-        padding: 0.5rem 1rem;
     }
     .stButton>button:hover { background-color: #1B4F72; transform: scale(1.02); }
-    
-    /* Styling Container Materi */
-    div[data-testid="stExpander"] {
-        border: 1px solid #ddd;
-        border-radius: 10px;
-        background-color: #f9f9f9;
-    }
-    
-    /* Header styling */
     h1, h2, h3 { color: #2C3E50; }
 </style>
 """, unsafe_allow_html=True)
@@ -45,7 +32,7 @@ if 'is_logged_in' not in st.session_state:
 
 def check_password():
     input_pw = st.session_state.input_password
-    # Ganti "admin123" dengan password yang kamu mau
+    # Ganti "admin123" dengan passwordmu
     kunci_asli = st.secrets.get("RAHASIA_SAYA", "admin123")
     
     if input_pw == kunci_asli:
@@ -64,7 +51,7 @@ if not st.session_state.is_logged_in:
 # ==========================================
 # ⚙️ SETUP UTAMA
 # ==========================================
-# Inisialisasi State (Memory)
+# Inisialisasi Memory
 for key, default_val in {
     'kurikulum': [],
     'materi_sekarang': "",
@@ -86,7 +73,6 @@ if not api_key:
     st.stop()
 
 genai.configure(api_key=api_key)
-# Prioritaskan model Flash yang cepat
 try:
     model = genai.GenerativeModel('gemini-2.5-flash')
 except:
@@ -107,12 +93,10 @@ with st.sidebar:
                 st.session_state.topik_saat_ini = topik_input
                 with st.spinner("Sedang menyusun silabus..."):
                     try:
-                        # Prompt Kurikulum
-                        prompt = f"Buatkan daftar 5 Judul Bab untuk belajar '{topik_input}'. Hanya list bab saja tanpa angka/bullet."
+                        prompt = f"Buatkan daftar 5 Judul Bab untuk belajar '{topik_input}'. Hanya list bab saja."
                         res = model.generate_content(prompt)
-                        # Bersihkan output jadi list
                         clean_list = [line.strip().lstrip('1234567890.- ') for line in res.text.split('\n') if line.strip()]
-                        st.session_state.kurikulum = clean_list[:5] # Ambil 5 teratas
+                        st.session_state.kurikulum = clean_list[:5]
                         
                         # Reset layar kanan
                         st.session_state.materi_sekarang = ""
@@ -133,14 +117,6 @@ with st.sidebar:
 # --- AREA UTAMA ---
 if not st.session_state.kurikulum:
     st.title("👋 Selamat Datang!")
-    st.markdown("""
-    Aplikasi ini akan membantumu belajar apa saja dengan struktur yang rapi.
-    
-    1. **Masukkan Topik** di menu kiri.
-    2. **Pilih Bab** yang ingin dipelajari.
-    3. **Dapatkan Materi** teks + visual diagram otomatis.
-    4. **Kerjakan Kuis** untuk tes pemahaman.
-    """)
     st.info("👈 Mulai dengan mengisi topik di Sidebar kiri.")
 
 else:
@@ -155,37 +131,49 @@ else:
             if st.button("✨ Buka Materi Bab Ini", use_container_width=True):
                 with st.spinner("Guru sedang menulis materi & menggambar diagram..."):
                     try:
-                        # PROMPT RAHASIA: Meminta Graphviz dengan Style Infografis
+                        # PROMPT SANGAT TEGAS AGAR OUTPUTNYA BENAR
                         prompt_materi = f"""
                         Saya belajar '{st.session_state.topik_saat_ini}', Bab '{pilihan_bab}'.
                         Gaya: {gaya_belajar}.
                         
-                        Tugas 1: Jelaskan materi secara lengkap dan rapi (Markdown).
+                        Tugas 1: Jelaskan materi secara lengkap (Markdown).
                         
-                        Tugas 2: Buatkan DIAGRAM VISUAL (Peta Konsep) menggunakan kode **Graphviz DOT**.
-                        Syarat Diagram:
-                        - Gunakan `node [style="filled", shape="note", fillcolor="#E8DAEF", fontname="Helvetica"]`.
-                        - Gunakan warna-warna cerah (pastel) untuk node yang berbeda.
-                        - Sertakan EMOJI di dalam label node agar menarik.
-                        - Layout dari kiri ke kanan (`rankdir=LR`).
+                        Tugas 2: Buatkan DIAGRAM (Peta Konsep) menggunakan kode **Graphviz DOT**.
+                        - Gunakan `node [style="filled", fillcolor="lightblue", shape="box"]`.
+                        - Layout `rankdir=LR`.
                         
-                        Outputkan kode Graphviz di dalam blok:
-                        ```dot
-                        digraph G {{ ... }}
-                        ```
+                        PENTING: Tulis kode diagram di bagian PALING BAWAH, diawali kata 'digraph' dan diakhiri kurung kurawal tutup '}}'.
                         """
                         response = model.generate_content(prompt_materi)
                         text_full = response.text
                         
-                        # Ekstrak Kode DOT Graphviz
-                        match = re.search(r'```dot(.*?)```', text_full, re.DOTALL)
+                        # --- LOGIKA RADAR (EXTRACTION) ---
+                        # Kita cari kata 'digraph' sampai kurung tutup terakhir '}'
+                        # Tidak peduli ada tanda ``` atau tidak.
+                        
+                        # 1. Coba cari pattern code block dulu (paling aman)
+                        match = re.search(r'```(dot|graphviz)(.*?)```', text_full, re.DOTALL)
+                        
                         if match:
-                            st.session_state.diagram_code = match.group(1).strip()
-                            # Hapus kode diagram dari teks bacaan
+                            st.session_state.diagram_code = match.group(2).strip()
                             st.session_state.materi_sekarang = text_full.replace(match.group(0), "").strip()
                         else:
-                            st.session_state.diagram_code = ""
-                            st.session_state.materi_sekarang = text_full
+                            # 2. PLAN B: Cari manual kata 'digraph'
+                            if "digraph" in text_full:
+                                start_index = text_full.find("digraph")
+                                # Anggap sisanya adalah kode (sampai akhir)
+                                potential_code = text_full[start_index:]
+                                # Bersihkan sedikit kalau ada sisa text di bawahnya (opsional)
+                                last_brace = potential_code.rfind("}")
+                                if last_brace != -1:
+                                    potential_code = potential_code[:last_brace+1]
+                                
+                                st.session_state.diagram_code = potential_code
+                                # Hapus kode dari materi agar tidak dobel
+                                st.session_state.materi_sekarang = text_full[:start_index].strip()
+                            else:
+                                st.session_state.diagram_code = ""
+                                st.session_state.materi_sekarang = text_full
                         
                         st.session_state.quiz_data = None # Reset kuis
                         
@@ -194,21 +182,23 @@ else:
 
             # TAMPILKAN HASIL
             if st.session_state.materi_sekarang:
-                # 1. Tampilkan Diagram (Pasti Muncul)
+                # 1. Tampilkan Diagram (JIKA ADA KODE)
                 if st.session_state.diagram_code:
                     st.markdown("### 🧩 Peta Konsep Visual")
-                    with st.expander("Klik untuk Memperbesar Diagram", expanded=True):
+                    with st.expander("Klik untuk Perbesar Diagram", expanded=True):
                         try:
                             st.graphviz_chart(st.session_state.diagram_code, use_container_width=True)
-                            st.caption("Diagram dihasilkan otomatis oleh AI.")
-                        except:
-                            st.error("Gagal merender diagram.")
+                        except Exception as e:
+                            st.error("Maaf, diagram gagal digambar.")
+                            # Tampilkan kodenya biar kita tau salahnya dimana
+                            with st.expander("Lihat Kode Error"):
+                                st.code(st.session_state.diagram_code)
                     st.markdown("---")
                 
                 # 2. Tampilkan Teks
                 st.markdown(st.session_state.materi_sekarang)
 
-        # === TAB KUIS ===
+        # === TAB KUIS (Sama seperti sebelumnya) ===
         with tab_kuis:
             st.write("### 📝 Kuis Pemahaman")
             if st.button("🎲 Generate 5 Soal", key="btn_soal"):
@@ -245,7 +235,3 @@ else:
                             else:
                                 st.error(f"No {i+1}: Salah. Jawaban: {q['answer']}")
                                 st.caption(f"Penjelasan: {q['explanation']}")
-                        
-                        final = (score / len(st.session_state.quiz_data)) * 100
-                        st.metric("Skor Kamu", f"{final:.0f}")
-                        if final == 100: st.balloons()
