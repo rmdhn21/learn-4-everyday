@@ -41,6 +41,7 @@ def ask_the_brain(provider, model_name, api_key, prompt):
     try:
         if provider == "Google Gemini":
             genai.configure(api_key=api_key)
+            # Pastikan nama model bersih
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt)
             return response.text
@@ -60,7 +61,7 @@ def ask_the_brain(provider, model_name, api_key, prompt):
         return f"⚠️ ERROR {provider}: {str(e)}"
 
 # ==========================================
-# ⚙️ FUNGSI PENDUKUNG (Mermaid, Audio, Gambar)
+# ⚙️ FUNGSI PENDUKUNG
 # ==========================================
 def render_mermaid(code):
     html_code = f"""
@@ -110,7 +111,8 @@ def generate_image_pollinations(prompt, style_model):
 if 'is_logged_in' not in st.session_state: st.session_state.is_logged_in = False
 
 def check_password():
-    if st.session_state.input_pw == st.secrets.get("RAHASIA_SAYA", "admin123"):
+    kunci = st.secrets.get("RAHASIA_SAYA", "admin123")
+    if st.session_state.input_pw == kunci:
         st.session_state.is_logged_in = True
         st.session_state.input_pw = ""
     else: st.error("Password Salah!")
@@ -139,44 +141,46 @@ with st.sidebar:
     api_key = ""
     model_name = ""
 
+    # --- UPDATE DAFTAR MODEL SESUAI LOG KAMU ---
     if provider == "Google Gemini":
-        model_name = st.selectbox("Model:", ["gemini-2.0-flash", "gemini-1.5-flash"])
+        st.caption("🚀 Menggunakan Model Terbaru (Bleeding Edge)")
+        # Saya pilihkan yang paling relevan untuk Chat & Text Generation
+        model_name = st.selectbox("Model:", [
+            "gemini-2.5-flash",        # Super Cepat & Baru
+            "gemini-2.5-pro",          # Paling Pintar
+            "gemini-2.0-flash",        # Standar Baru
+            "gemini-3-pro-preview",    # Masa Depan (Eksperimental)
+            "gemini-flash-latest",     # Selalu update otomatis
+            "gemini-pro-latest"
+        ])
+        
         if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]; st.success("API Key Ready.")
         else: api_key = st.text_input("Gemini Key:", type="password")
 
     elif provider == "Groq (Super Cepat)":
-        model_name = st.selectbox("Model:", ["llama3-70b-8192", "mixtral-8x7b-32768"])
+        model_name = st.selectbox("Model:", ["llama3-70b-8192", "mixtral-8x7b-32768", "llama3-8b-8192"])
         if "GROQ_API_KEY" in st.secrets: api_key = st.secrets["GROQ_API_KEY"]; st.success("API Key Ready.")
         else: api_key = st.text_input("Groq Key:", type="password")
 
     st.markdown("---")
     st.header("🎛️ Kontrol Belajar")
     with st.container(border=True):
-        topik_input = st.text_input("Topik:", placeholder="Cth: Fotosintesis")
+        topik_input = st.text_input("Topik:", placeholder="Cth: Teknologi Nano")
         gaya_belajar = st.selectbox("Gaya:", ["👶 Pemula", "💡 Visual", "🏫 Akademis", "🚀 Praktis"])
         
-        # --- KETERANGAN GAYA BELAJAR (FITUR BARU) ---
         with st.expander("ℹ️ Bedanya apa?", expanded=False):
             st.markdown("""
-            **👶 Pemula (ELI5):**
-            Dijelaskan super simpel, ibarat menjelaskan ke anak kecil. Tanpa istilah rumit.
-            
-            **💡 Visual (Analogi):**
-            Menggunakan banyak perumpamaan dan bahasa yang memancing imajinasi.
-            
-            **🏫 Akademis (Kuliah):**
-            Formal, detail, terstruktur, dan mendalam. Cocok untuk tugas sekolah/kuliah.
-            
-            **🚀 Praktis (To-the-point):**
-            Langsung ke intinya. Berisi panduan, langkah-langkah, dan tips penerapan.
+            **👶 Pemula (ELI5):** Penjelasan super simpel.
+            **💡 Visual (Analogi):** Banyak perumpamaan.
+            **🏫 Akademis (Kuliah):** Formal & Teoritis.
+            **🚀 Praktis (To-the-point):** Langsung penerapan.
             """)
-        # --------------------------------------------
 
         if st.button("Buat Kurikulum"):
             if not api_key: st.error("Isi API Key!")
             elif topik_input:
                 st.session_state.topik_saat_ini = topik_input
-                with st.spinner("Menyusun..."):
+                with st.spinner(f"Menyusun kurikulum dengan {model_name}..."):
                     p = f"Buat 5 Judul Bab belajar '{topik_input}'. Hanya list bab."
                     res = ask_the_brain(provider, model_name, api_key, p)
                     if "ERROR" in res: st.error(res)
@@ -194,17 +198,17 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate")
-    st.info("Pilih Topik di kiri. Nikmati fitur Materi, Video, Gambar, dan Kuis dalam satu aplikasi.")
+    st.title("🎓 Guru Saku Ultimate (v18)")
+    st.info("Pilih Topik di kiri. Support Gemini 2.5 & 3.0 Preview!")
 
-# EMPAT TAB SAKTI
+# TABS
 tab_belajar, tab_video, tab_gambar, tab_kuis = st.tabs(["📚 Materi & Diagram", "🎬 Video AI", "🎨 Ilustrasi AI", "📝 Kuis"])
 
 # === TAB 1: MATERI ===
 with tab_belajar:
     if st.session_state.kurikulum and pilihan_bab:
         st.header(f"🎓 {st.session_state.topik_saat_ini}")
-        st.caption(f"Bab: {pilihan_bab} | Guru: {provider}")
+        st.caption(f"Bab: {pilihan_bab} | Guru: {model_name}")
         
         if st.button("✨ Buka Materi"):
             if not api_key: st.error("API Key kosong.")
@@ -249,7 +253,7 @@ with tab_video:
 # === TAB 3: GAMBAR ===
 with tab_gambar:
     st.header("🎨 Ilustrasi AI (Gratis)")
-    st.write("Buat gambar pendukung belajar secara instan dan gratis.")
+    st.write("Buat gambar pendukung belajar secara instan.")
     
     col_input, col_style = st.columns([3, 1])
     with col_input:
