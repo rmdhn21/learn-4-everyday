@@ -21,7 +21,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS (Hanya untuk tombol & expander, Chat pakai Native)
+# Custom CSS
 st.markdown("""
 <style>
     html, body, [class*="css"] { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
@@ -31,8 +31,6 @@ st.markdown("""
     }
     .stButton>button:hover { background-color: #004B91; transform: scale(1.02); }
     .stSelectbox, .stTextInput { margin-bottom: 15px; }
-    
-    /* Styling Header Expander agar lebih tegas */
     .streamlit-expanderHeader {
         background-color: #f0f2f6;
         color: #004B91;
@@ -44,10 +42,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ⚙️ FUNGSI VISUALISASI CANGGIH
+# ⚙️ FUNGSI VISUALISASI & PENDUKUNG
 # ==========================================
 def render_interactive_graphviz(dot_code):
-    """Render diagram dengan fitur Zoom & Pan"""
     try:
         safe_code = urllib.parse.quote(dot_code)
         url = f"https://quickchart.io/graphviz?graph={safe_code}&format=svg"
@@ -56,38 +53,21 @@ def render_interactive_graphviz(dot_code):
         <html>
         <head>
             <script src="https://bumbu.me/svg-pan-zoom/dist/svg-pan-zoom.min.js"></script>
-            <style>
-                body, html {{ margin: 0; padding: 0; height: 100%; overflow: hidden; background: white; }}
-                #container {{ width: 100%; height: 100%; border: 1px solid #ddd; border-radius: 8px; }}
-                #diagram-svg {{ width: 100%; height: 100%; }}
-            </style>
+            <style>body, html {{ margin: 0; padding: 0; height: 100%; overflow: hidden; background: white; }} #container {{ width: 100%; height: 100%; }} #diagram-svg {{ width: 100%; height: 100%; }}</style>
         </head>
         <body>
-            <div id="container">
-                <object id="diagram-svg" type="image/svg+xml" data="{url}"></object>
-            </div>
-            <script>
-                window.onload = function() {{
-                    var svgElement = document.getElementById('diagram-svg');
-                    svgElement.addEventListener('load', function() {{
-                        svgPanZoom(svgElement, {{ zoomEnabled: true, controlIconsEnabled: true, fit: true, center: true, minZoom: 0.5, maxZoom: 10 }});
-                    }});
-                }};
-            </script>
+            <div id="container"><object id="diagram-svg" type="image/svg+xml" data="{url}"></object></div>
+            <script>window.onload = function() {{ var svgElement = document.getElementById('diagram-svg'); svgElement.addEventListener('load', function() {{ svgPanZoom(svgElement, {{ zoomEnabled: true, controlIconsEnabled: true, fit: true, center: true, minZoom: 0.5, maxZoom: 10 }}); }}); }};</script>
         </body>
-        </html>
-        """
+        </html>"""
         components.html(html_code, height=500, scrolling=False)
         st.caption("💡 **Zoom:** Klik tombol (+) dan (-) di pojok kiri atas diagram.")
-    except:
-        st.graphviz_chart(dot_code)
+    except: st.graphviz_chart(dot_code)
 
 def bersihkan_kode_dot(text):
     start_index = text.find("digraph")
     if start_index == -1: return None 
-    balance = 0
-    found_first_brace = False
-    end_index = -1
+    balance = 0; found_first_brace = False; end_index = -1
     for i in range(start_index, len(text)):
         char = text[i]
         if char == '{': balance += 1; found_first_brace = True
@@ -99,27 +79,18 @@ def ask_the_brain(provider, model_name, api_key, prompt):
     try:
         if provider == "Google Gemini":
             genai.configure(api_key=api_key)
-            safety_settings = [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-            ]
+            safety_settings = [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}, {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"}, {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"}, {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}]
             time.sleep(1)
             model = genai.GenerativeModel(model_name, safety_settings=safety_settings)
             response = model.generate_content(prompt)
             return response.text
         elif provider == "Groq (Super Cepat)":
             client = Groq(api_key=api_key)
-            chat_completion = client.chat.completions.create(
-                messages=[{"role": "system", "content": "Kamu adalah Profesor Ahli yang menjelaskan materi secara sangat mendalam dan panjang lebar."}, {"role": "user", "content": prompt}],
-                model=model_name, temperature=0.7
-            )
+            chat_completion = client.chat.completions.create(messages=[{"role": "system", "content": "Kamu adalah Profesor Ahli."}, {"role": "user", "content": prompt}], model=model_name, temperature=0.7)
             return chat_completion.choices[0].message.content
     except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg: return "⛔ **KUOTA HABIS**\n\nTunggu 1 menit atau pakai **Groq**."
-        return f"⚠️ ERROR {provider}: {error_msg}"
+        if "429" in str(e): return "⛔ **KUOTA HABIS**\n\nTunggu 1 menit atau pakai **Groq**."
+        return f"⚠️ ERROR {provider}: {str(e)}"
 
 def generate_audio(text):
     try:
@@ -136,17 +107,13 @@ def get_clean_image_url(prompt, style_model):
     return f"https://pollinations.ai/p/{encoded_prompt}?width=1024&height=768&seed={seed}&model={style_model}&nologo=true"
 
 def render_interactive_content(text):
-    # Pisahkan berdasarkan heading markdown ##
     sections = re.split(r'(^##\s+.*)', text, flags=re.MULTILINE)
     if sections[0].strip(): st.markdown(sections[0])
-    
-    # Render setiap bagian sebagai expander
     for i in range(1, len(sections), 2):
         if i + 1 < len(sections):
             title = sections[i].replace("##", "").strip()
             content = sections[i+1].strip()
-            with st.expander(f"📘 {title}"): # Tambah ikon buku biar cantik
-                st.markdown(content)
+            with st.expander(f"📘 {title}"): st.markdown(content)
 
 # ==========================================
 # 🔒 LOGIN & STATE
@@ -166,12 +133,7 @@ if not st.session_state.is_logged_in:
     with col2: st.text_input("Password:", type="password", key="input_pw", on_change=check_password)
     st.stop()
 
-# Init State
-for k, v in {
-    'kurikulum':[], 'materi_sekarang':"", 'quiz_data':None, 'diagram_code':"", 
-    'topik_saat_ini':"", 'audio_path':None, 'current_image_url': None,
-    'chat_history': []
-}.items():
+for k, v in {'kurikulum':[], 'materi_sekarang':"", 'quiz_data':None, 'diagram_code':"", 'topik_saat_ini':"", 'audio_path':None, 'current_image_url': None, 'chat_history': []}.items():
     if k not in st.session_state: st.session_state[k] = v
 
 # ==========================================
@@ -180,28 +142,22 @@ for k, v in {
 with st.sidebar:
     st.title("⚡ Pilih Mesin AI")
     provider = st.radio("Otak:", ["Google Gemini", "Groq (Super Cepat)"])
-    
-    api_key = ""
-    model_name = ""
-
+    api_key = ""; model_name = ""
     if provider == "Google Gemini":
         st.caption("Pilihan Model:")
         model_name = st.selectbox("Versi:", ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"])
         if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]; st.caption("✅ API Key Ready")
         else: api_key = st.text_input("Gemini Key:", type="password")
-
     elif provider == "Groq (Super Cepat)":
         st.caption("Model Llama 3:")
         model_name = st.selectbox("Versi:", ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"])
         if "GROQ_API_KEY" in st.secrets: api_key = st.secrets["GROQ_API_KEY"]; st.caption("✅ API Key Ready")
         else: api_key = st.text_input("Groq Key:", type="password")
 
-    st.markdown("---")
-    st.header("🎛️ Kontrol Belajar")
+    st.markdown("---"); st.header("🎛️ Kontrol Belajar")
     with st.container(border=True):
         topik_input = st.text_input("Topik:", placeholder="Cth: Geologi")
         gaya_belajar = st.selectbox("Gaya:", ["👶 Pemula", "💡 Visual", "🏫 Akademis (Kuliah)", "🚀 Praktis (Kerja)"])
-        
         if st.button("Buat Kurikulum"):
             if not api_key: st.error("Isi API Key!")
             elif topik_input:
@@ -212,8 +168,7 @@ with st.sidebar:
                     if "⛔" in res or "⚠️" in res: st.error(res) 
                     else:
                         st.session_state.kurikulum = [l.strip().lstrip('1234567890.-* ') for l in res.split('\n') if l.strip()][:5]
-                        st.session_state.materi_sekarang = ""; st.session_state.diagram_code = ""; st.session_state.quiz_data = None; st.session_state.current_image_url = None
-                        st.session_state.chat_history = [] 
+                        st.session_state.materi_sekarang = ""; st.session_state.diagram_code = ""; st.session_state.quiz_data = None; st.session_state.current_image_url = None; st.session_state.chat_history = [] 
                         st.toast("Siap!")
 
     if st.session_state.kurikulum:
@@ -225,155 +180,115 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v41)")
-    st.info("Fitur Baru: Materi Super Detail & Tampilan Chat WhatsApp Style!")
+    st.title("🎓 Guru Saku Ultimate (v42)")
+    st.info("Update: Kuis 15 Soal & Perbaikan Sistem Penilaian (Skor Akurat).")
 
-# --- 5 TAB OUTPUT ---
-tab_belajar, tab_video, tab_gambar, tab_kuis, tab_chat = st.tabs(["📚 Materi (Deep)", "🎬 Video", "🎨 Ilustrasi", "📝 Kuis", "💬 Tanya Guru"])
+tab_belajar, tab_video, tab_gambar, tab_kuis, tab_chat = st.tabs(["📚 Materi", "🎬 Video", "🎨 Ilustrasi", "📝 Kuis (15 Soal)", "💬 Tanya Guru"])
 
-# === TAB 1: MATERI (PROMPT DI-UPGRADE) ===
+# === TAB 1: MATERI ===
 with tab_belajar:
     if st.session_state.kurikulum and pilihan_bab:
         st.header(f"🎓 {st.session_state.topik_saat_ini}")
         st.caption(f"Bab: {pilihan_bab} | Guru: {model_name}")
-        
         if st.button("✨ Buka Materi Lengkap"):
             if not api_key: st.error("API Key kosong.")
             else:
                 with st.spinner("Menulis materi Panjang & Menggambar Diagram..."):
-                    # --- PROMPT MAUT UNTUK MATERI PANJANG ---
                     p = f"""
                     Saya belajar '{st.session_state.topik_saat_ini}', Bab '{pilihan_bab}'.
                     Gaya: {gaya_belajar}.
-                    
-                    TUGAS 1 (MATERI): 
-                    Jelaskan materi ini secara **SANGAT MENDALAM, PANJANG, DAN KOMPREHENSIF**.
-                    - Jangan hanya ringkasan. Berikan penjelasan detail layaknya buku teks kuliah atau jurnal ilmiah.
-                    - Sertakan: Definisi, Sejarah, Cara Kerja/Mekanisme, Studi Kasus/Contoh Nyata, Kelebihan/Kekurangan, dan Masa Depan.
-                    - Minimal 1000 kata jika perlu.
-                    - **WAJIB:** Gunakan Heading 2 Markdown (##) untuk memisahkan setiap Sub-Bab agar saya bisa memecahnya menjadi menu interaktif.
-                    
-                    TUGAS 2 (DIAGRAM): 
-                    Buat DIAGRAM Peta Konsep (Graphviz DOT).
-                    - Gunakan `digraph G {{ ... }}`.
-                    - Node style: `node [style="filled", fillcolor="lightblue", shape="box", fontname="Arial"]`.
-                    - Rankdir: TD (Atas ke Bawah).
+                    TUGAS 1 (MATERI): Jelaskan secara MENDALAM & PANJANG. Gunakan Heading 2 (##) untuk Sub-Bab.
+                    TUGAS 2 (DIAGRAM): Buat Graphviz DOT `digraph G {{...}}`. Node style fillcolor="lightblue".
                     """
                     full = ask_the_brain(provider, model_name, api_key, p)
                     if "⛔" in full or "⚠️" in full: st.error(full)
                     else:
                         kode_dot = bersihkan_kode_dot(full)
-                        if kode_dot:
-                            st.session_state.diagram_code = kode_dot
-                            idx = full.find("digraph")
-                            st.session_state.materi_sekarang = full[:idx].strip()
-                        else:
-                            st.session_state.diagram_code = ""
-                            st.session_state.materi_sekarang = full
+                        if kode_dot: st.session_state.diagram_code = kode_dot; idx = full.find("digraph"); st.session_state.materi_sekarang = full[:idx].strip()
+                        else: st.session_state.diagram_code = ""; st.session_state.materi_sekarang = full
                         st.session_state.quiz_data = None; st.session_state.audio_path = None
-        
-        if st.session_state.diagram_code:
-            st.markdown("### 🧩 Peta Konsep"); render_interactive_graphviz(st.session_state.diagram_code)
-        
-        if st.session_state.materi_sekarang:
-            st.markdown("---")
-            # Render Accordion Interaktif
-            render_interactive_content(st.session_state.materi_sekarang)
-            
-        if st.session_state.diagram_code:
-            st.markdown("---")
-            with st.expander("🔄 Ringkasan Visual"): render_interactive_graphviz(st.session_state.diagram_code)
+        if st.session_state.diagram_code: st.markdown("### 🧩 Peta Konsep"); render_interactive_graphviz(st.session_state.diagram_code)
+        if st.session_state.materi_sekarang: st.markdown("---"); render_interactive_content(st.session_state.materi_sekarang)
+        if st.session_state.diagram_code: st.markdown("---"); 
+        with st.expander("🔄 Ringkasan Visual"): render_interactive_graphviz(st.session_state.diagram_code)
 
 # === TAB 2: VIDEO ===
 with tab_video:
     st.header("🎬 Studio Video")
     if st.session_state.materi_sekarang:
         if st.button("🎙️ Buat Suara Guru"):
-            clean_text = st.session_state.materi_sekarang.replace("#", "").replace("*", "")
-            aud = generate_audio(clean_text[:1500]) # Tambah limit karakter jadi 1500
+            aud = generate_audio(st.session_state.materi_sekarang.replace("#", "").replace("*", "")[:1500])
             if aud: st.session_state.audio_path = aud; st.success("Selesai!")
         if st.session_state.audio_path:
-            c1, c2 = st.columns(2)
+            c1, c2 = st.columns(2); 
             with c1: st.info("🔊 Dengar"); st.audio(st.session_state.audio_path)
             with c2: st.info("🖼️ Lihat Diagram"); 
             if st.session_state.diagram_code: render_interactive_graphviz(st.session_state.diagram_code)
-    else: st.warning("Buka materi di Tab 1 dulu.")
+    else: st.warning("Buka materi dulu.")
 
 # === TAB 3: GAMBAR ===
 with tab_gambar:
     st.header("🎨 Ilustrasi AI")
-    col_input, col_style = st.columns([3, 1])
-    with col_input:
-        default_prompt = f"Illustration of {pilihan_bab} in {st.session_state.topik_saat_ini}, educational style, detailed, 8k" if pilihan_bab else "A cute robot teacher"
-        prompt_gambar = st.text_input("Prompt Gambar:", value=default_prompt)
-    with col_style:
-        gaya_gambar = st.selectbox("Gaya:", ["flux", "turbo", "midjourney", "anime", "3d-model"])
-    if st.button("🖌️ Lukis"):
-        url_gambar = get_clean_image_url(prompt_gambar, gaya_gambar)
-        st.session_state.current_image_url = url_gambar; st.success("Memuat...")
-    if st.session_state.current_image_url:
-        st.markdown(f'<div style="text-align: center;"><img src="{st.session_state.current_image_url}" style="max-width: 100%; border-radius: 10px;"><br><br><a href="{st.session_state.current_image_url}" target="_blank"><button style="background-color:#4CAF50; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer;">⬇️ Buka Penuh</button></a></div>', unsafe_allow_html=True)
+    col1, col2 = st.columns([3,1])
+    with col1: prompt_gambar = st.text_input("Prompt:", value=f"Illustration of {pilihan_bab} in {st.session_state.topik_saat_ini}, educational style, detailed, 8k" if pilihan_bab else "A cute robot teacher")
+    with col2: gaya = st.selectbox("Gaya:", ["flux", "turbo", "midjourney", "anime", "3d-model"])
+    if st.button("🖌️ Lukis"): st.session_state.current_image_url = get_clean_image_url(prompt_gambar, gaya); st.success("Memuat...")
+    if st.session_state.current_image_url: st.markdown(f'<div style="text-align: center;"><img src="{st.session_state.current_image_url}" style="max-width: 100%; border-radius: 10px;"><br><br><a href="{st.session_state.current_image_url}" target="_blank"><button style="background-color:#4CAF50; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer;">⬇️ Buka Penuh</button></a></div>', unsafe_allow_html=True)
 
-# === TAB 4: KUIS ===
+# === TAB 4: KUIS (DIPERBAIKI SKORNYA) ===
 with tab_kuis:
-    st.header("📝 Kuis")
+    st.header("📝 Kuis (15 Soal)")
     if st.button("🎲 Buat Kuis"):
         if not api_key: st.error("API Key?")
         elif pilihan_bab:
-            with st.spinner("Bikin soal..."):
-                p = f"5 Soal Pilgan '{pilihan_bab}'. JSON murni: [{{'question':'..','options':['A'],'answer':'A','explanation':'..'}}] no markdown."
+            with st.spinner("Membuat 15 Soal..."):
+                # Minta 15 soal
+                p = f"Buat 15 Soal Pilgan tentang '{pilihan_bab}'. Output JSON Murni: [{{'question':'..','options':['A. ..','B. ..'],'answer':'A','explanation':'..'}}] no markdown."
                 res = ask_the_brain(provider, model_name, api_key, p)
                 try:
                     clean = res.replace("```json","").replace("```","").strip()
-                    if '[' in clean and ']' in clean:
-                        clean = clean[clean.find('['):clean.rfind(']')+1]
-                        st.session_state.quiz_data = json.loads(clean)
-                except: st.error("Gagal format JSON.")
+                    if '[' in clean: clean = clean[clean.find('['):clean.rfind(']')+1]
+                    st.session_state.quiz_data = json.loads(clean)
+                except: st.error("Gagal format JSON. Coba lagi.")
+
     if st.session_state.quiz_data:
         with st.form("quiz"):
             ans = {}
             for i, q in enumerate(st.session_state.quiz_data):
-                st.markdown(f"**{i+1}. {q['question']}**"); ans[i] = st.radio("Jwb:", q['options'], key=f"q{i}", label_visibility="collapsed")
-            if st.form_submit_button("Cek"):
-                sc=0
-                for i,q in enumerate(st.session_state.quiz_data):
-                    if ans[i]==q['answer']: sc+=1; st.success(f"No {i+1}: Benar!")
-                    else: st.error(f"No {i+1}: Salah. ({q['answer']})")
-                st.metric("Skor", f"{sc/len(st.session_state.quiz_data)*100:.0f}")
+                st.markdown(f"**{i+1}. {q['question']}**")
+                # Radio button menyimpan teks lengkap (contoh: "A. Jawaban")
+                ans[i] = st.radio("Jwb:", q['options'], key=f"q{i}", label_visibility="collapsed")
+            
+            if st.form_submit_button("Cek Nilai"):
+                sc = 0
+                for i, q in enumerate(st.session_state.quiz_data):
+                    # --- PERBAIKAN LOGIKA PENILAIAN ---
+                    # Ambil huruf depan dari jawaban user (misal "A. Jawaban" -> "A")
+                    user_ans_letter = ans[i].split(".")[0].strip()
+                    
+                    # Bandingkan huruf user dengan kunci jawaban AI
+                    if user_ans_letter == q['answer']: 
+                        sc += 1
+                        st.success(f"No {i+1}: Benar! ({ans[i]})")
+                    else: 
+                        st.error(f"No {i+1}: Salah. Jawaban: {q['answer']}")
+                    
+                    st.caption(f"💡 {q['explanation']}")
+                
+                final_score = (sc / len(st.session_state.quiz_data)) * 100
+                st.metric("SKOR AKHIR", f"{final_score:.0f}")
+                if final_score == 100: st.balloons()
 
-# === TAB 5: CHATBOT GURU (UI DIPERBAIKI) ===
+# === TAB 5: CHAT ===
 with tab_chat:
     st.header("💬 Tanya Guru")
-    st.caption("Diskusikan materi ini lebih dalam. Guru siap menjawab!")
-    
-    # 1. Tampilkan History Chat dengan UI Native Streamlit (Lebih Bagus)
-    for message in st.session_state.chat_history:
-        # Gunakan 'user' icon untuk siswa, 'assistant' icon untuk guru
-        role = "user" if message["role"] == "user" else "assistant"
-        with st.chat_message(role):
-            st.markdown(message["message"])
-
-    # 2. Input User
-    if user_question := st.chat_input("Apa yang masih bingung?"):
-        # Tampilkan pesan user langsung
-        st.session_state.chat_history.append({"role": "user", "message": user_question})
-        with st.chat_message("user"):
-            st.markdown(user_question)
-        
-        # Proses AI
-        context_prompt = f"""
-        Kamu adalah Guru Ahli.
-        Konteks Materi Saat Ini: {st.session_state.materi_sekarang[:3000]}...
-        
-        Pertanyaan Siswa: {user_question}
-        
-        Jawablah dengan ramah, jelas, dan membantu.
-        """
-        
+    for msg in st.session_state.chat_history:
+        with st.chat_message(msg["role"]): st.markdown(msg["message"])
+    if q := st.chat_input("Ada pertanyaan?"):
+        st.session_state.chat_history.append({"role":"user", "message":q})
+        with st.chat_message("user"): st.markdown(q)
         with st.chat_message("assistant"):
-            with st.spinner("Guru sedang mengetik..."):
-                answer = ask_the_brain(provider, model_name, api_key, context_prompt)
-                st.markdown(answer)
-        
-        # Simpan jawaban AI
-        st.session_state.chat_history.append({"role": "ai", "message": answer})
+            with st.spinner("..."):
+                ans = ask_the_brain(provider, model_name, api_key, f"Konteks: {st.session_state.materi_sekarang[:3000]}... Pertanyaan: {q}")
+                st.markdown(ans)
+        st.session_state.chat_history.append({"role":"ai", "message":ans})
