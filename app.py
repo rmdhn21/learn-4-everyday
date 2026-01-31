@@ -41,7 +41,6 @@ def ask_the_brain(provider, model_name, api_key, prompt):
     try:
         if provider == "Google Gemini":
             genai.configure(api_key=api_key)
-            # Konfigurasi safety agar tidak terlalu sensitif (block)
             safety_settings = [
                 {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
                 {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -66,16 +65,15 @@ def ask_the_brain(provider, model_name, api_key, prompt):
             
     except Exception as e:
         error_msg = str(e)
-        # Deteksi Error Spesifik untuk Memberi Solusi
         if "404" in error_msg:
-            return f"⛔ **MODEL TIDAK DITEMUKAN (404)**\n\nModel `{model_name}` sedang tidak tersedia untuk API Key kamu. \n👉 **Solusi:** Coba ganti pilihan 'Model' di menu sebelah kiri (misal: ganti ke 1.5-flash atau 2.0-flash)."
+            return f"⛔ **MODEL TIDAK DITEMUKAN (404)**\n\nModel `{model_name}` sedang error. Coba ganti ke `gemini-1.5-flash` di menu kiri."
         elif "429" in error_msg:
-            return "⛔ **KUOTA HABIS (429)**\n\nKamu terlalu ngebut! Google membatasi jumlah request per menit. \n👉 **Solusi:** Tunggu 1-2 menit, atau pindah ke **Groq**."
+            return "⛔ **KUOTA GEMINI HABIS (Limit 429)**\n\nGoogle membatasi kecepatanmu. \n👉 **Solusi:** Tunggu 1 menit atau pindah ke **Groq**."
         else:
             return f"⚠️ ERROR {provider}: {error_msg}"
 
 # ==========================================
-# ⚙️ FUNGSI PENDUKUNG
+# ⚙️ FUNGSI PENDUKUNG (GAMBAR, VIDEO, DIAGRAM)
 # ==========================================
 def render_mermaid(code):
     html_code = f"""
@@ -109,17 +107,23 @@ def generate_audio(text):
     except: return None
 
 def generate_image_pollinations(prompt, style_model):
+    """
+    Generator Gambar Anti-Blokir
+    """
     try:
-        encoded_prompt = urllib.parse.quote(prompt)
+        clean_prompt = prompt.replace(" ", "%20")
         seed = random.randint(1, 100000)
-        url = f"[https://pollinations.ai/p/](https://pollinations.ai/p/){encoded_prompt}?width=1024&height=768&seed={seed}&model={style_model}&nologo=true"
+        url = f"[https://pollinations.ai/p/](https://pollinations.ai/p/){clean_prompt}?width=1024&height=768&seed={seed}&model={style_model}&nologo=true"
+        # Headers agar dianggap browser asli
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=15)
         if response.status_code == 200:
             return Image.open(BytesIO(response.content))
-        else: return None
+        else:
+            st.warning("Server gambar sedang sibuk. Coba klik lagi.")
+            return None
     except: return None
 
 # ==========================================
@@ -149,7 +153,7 @@ for k, v in {
     if k not in st.session_state: st.session_state[k] = v
 
 # ==========================================
-# 🎛️ SIDEBAR (DUAL ENGINE)
+# 🎛️ SIDEBAR
 # ==========================================
 with st.sidebar:
     st.title("⚡ Pilih Mesin AI")
@@ -159,28 +163,23 @@ with st.sidebar:
     model_name = ""
 
     if provider == "Google Gemini":
-        st.info("💡 Tips: Jika error 404, ganti pilihan model di bawah ini satu per satu.")
-        
-        # --- DAFTAR MODEL PALING LENGKAP & STABIL ---
-        model_name = st.selectbox("Pilih Versi Gemini:", [
-            "gemini-1.5-flash",       # [STABIL] Paling aman, biasanya selalu bisa.
-            "gemini-1.5-flash-latest",# [ALTERNATIF] Versi update otomatis.
-            "gemini-2.0-flash",       # [BARU] Cepat, tapi kadang belum semua akun dapat.
-            "gemini-2.0-flash-exp",   # [EKSPERIMENTAL] Sangat baru.
-            "gemini-1.5-pro",         # [PINTAR] Lebih lambat tapi detail.
+        st.caption("Pilihan Model (Jika error, ganti ke 1.5):")
+        model_name = st.selectbox("Versi:", [
+            "gemini-2.5-flash", 
+            "gemini-2.0-flash", 
+            "gemini-1.5-flash"
         ])
-        
-        if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]; st.caption("✅ API Key Terhubung")
+        if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]; st.caption("✅ API Key Ready")
         else: api_key = st.text_input("Gemini Key:", type="password")
 
     elif provider == "Groq (Super Cepat)":
-        st.caption("✅ Llama 3.3 (Terbaru)")
-        model_name = st.selectbox("Model:", [
+        st.caption("Model Llama 3 (Ngebut):")
+        model_name = st.selectbox("Versi:", [
             "llama-3.3-70b-versatile",
             "llama-3.1-8b-instant",
             "mixtral-8x7b-32768"
         ])
-        if "GROQ_API_KEY" in st.secrets: api_key = st.secrets["GROQ_API_KEY"]; st.caption("✅ API Key Terhubung")
+        if "GROQ_API_KEY" in st.secrets: api_key = st.secrets["GROQ_API_KEY"]; st.caption("✅ API Key Ready")
         else: api_key = st.text_input("Groq Key:", type="password")
 
     st.markdown("---")
@@ -189,15 +188,28 @@ with st.sidebar:
         topik_input = st.text_input("Topik:", placeholder="Cth: Fotosintesis")
         gaya_belajar = st.selectbox("Gaya:", ["👶 Pemula", "💡 Visual", "🏫 Akademis", "🚀 Praktis"])
         
+        # --- FITUR WAJIB: PENJELASAN METODE BELAJAR ---
+        with st.expander("ℹ️ Penjelasan 4 Gaya Belajar", expanded=False):
+            st.markdown("""
+            1. **👶 Pemula (ELI5):** Penjelasan sangat sederhana, menggunakan bahasa sehari-hari. Cocok untuk yang baru belajar dari nol.
+            
+            2. **💡 Visual (Analogi):** Menggunakan banyak perumpamaan (misal: "Listrik itu seperti air di selang"). Cocok untuk tipe pemikir imajinatif.
+            
+            3. **🏫 Akademis (Kuliah):** Penjelasan formal, detail, dan menggunakan istilah teknis yang tepat. Cocok untuk tugas sekolah/kuliah.
+            
+            4. **🚀 Praktis (To-the-Point):** Langsung ke inti masalah. Berisi langkah-langkah, tips, dan cara penerapan nyata.
+            """)
+        # -----------------------------------------------
+
         if st.button("Buat Kurikulum"):
             if not api_key: st.error("Isi API Key!")
             elif topik_input:
                 st.session_state.topik_saat_ini = topik_input
-                with st.spinner(f"Menyusun kurikulum dengan {model_name}..."):
+                with st.spinner(f"Menyusun kurikulum..."):
                     p = f"Buat 5 Judul Bab belajar '{topik_input}'. Hanya list bab."
                     res = ask_the_brain(provider, model_name, api_key, p)
                     
-                    if "ERROR" in res or "⛔" in res: 
+                    if "⛔" in res or "⚠️" in res: 
                         st.error(res) 
                     else:
                         st.session_state.kurikulum = [l.strip().lstrip('1234567890.-* ') for l in res.split('\n') if l.strip()][:5]
@@ -210,33 +222,33 @@ with st.sidebar:
     else: pilihan_bab = None
 
 # ==========================================
-# 🖥️ AREA UTAMA
+# 🖥️ AREA UTAMA (4 OUTPUT LENGKAP)
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v21)")
-    st.info("Pilih Topik di kiri. Jika Gemini error, coba ganti model di dropdown Sidebar.")
+    st.title("🎓 Guru Saku AI Ultimate (v24)")
+    st.info("Pilih Topik di kiri. Semua fitur (Materi, Video, Gambar, Kuis) siap digunakan.")
 
-# EMPAT TAB SAKTI
+# --- FITUR WAJIB: 4 TAB OUTPUT ---
 tab_belajar, tab_video, tab_gambar, tab_kuis = st.tabs(["📚 Materi & Diagram", "🎬 Video AI", "🎨 Ilustrasi AI", "📝 Kuis"])
 
-# === TAB 1: MATERI ===
+# === TAB 1: MATERI (TEKS + DIAGRAM MERMAID) ===
 with tab_belajar:
     if st.session_state.kurikulum and pilihan_bab:
         st.header(f"🎓 {st.session_state.topik_saat_ini}")
-        st.caption(f"Bab: {pilihan_bab} | Guru: {model_name}")
+        st.caption(f"Bab: {pilihan_bab} | Guru: {model_name} | Gaya: {gaya_belajar}")
         
         if st.button("✨ Buka Materi"):
             if not api_key: st.error("API Key kosong.")
             else:
                 with st.spinner("Menulis & Menggambar Diagram..."):
                     p = f"""
-                    Jelaskan '{pilihan_bab}' ({gaya_belajar}).
-                    WAJIB: Buat Diagram Mermaid JS (graph TD/mindmap).
+                    Jelaskan '{pilihan_bab}' dengan gaya {gaya_belajar}.
+                    WAJIB: Buat Diagram Mermaid JS (graph TD/mindmap) yang relevan.
                     Kode diagram dalam blok ```mermaid ... ```.
                     """
                     full = ask_the_brain(provider, model_name, api_key, p)
                     
-                    if "ERROR" in full or "⛔" in full: 
+                    if "⛔" in full or "⚠️" in full: 
                         st.error(full)
                     else:
                         mm = extract_mermaid_code(full)
@@ -251,9 +263,10 @@ with tab_belajar:
                 st.markdown("### 🧩 Peta Konsep"); render_mermaid(st.session_state.mermaid_code)
             st.markdown("---"); st.markdown(st.session_state.materi_sekarang)
 
-# === TAB 2: VIDEO ===
+# === TAB 2: VIDEO (SUARA + DIAGRAM) ===
 with tab_video:
     st.header("🎬 Studio Video")
+    st.write("Dengarkan materi sambil melihat diagram konsep.")
     if st.session_state.materi_sekarang:
         if st.button("🎙️ Buat Suara Guru"):
             aud = generate_audio(st.session_state.materi_sekarang[:1000])
@@ -265,19 +278,20 @@ with tab_video:
             with c2: 
                 st.info("🖼️ Lihat")
                 if st.session_state.mermaid_code: render_mermaid(st.session_state.mermaid_code)
-    else: st.warning("Buka materi di Tab 1 dulu.")
+                else: st.warning("Diagram belum dibuat di Tab Materi.")
+    else: st.warning("Silakan Buka Materi di Tab 1 terlebih dahulu.")
 
-# === TAB 3: GAMBAR ===
+# === TAB 3: GAMBAR (ILUSTRASI GRATIS) ===
 with tab_gambar:
     st.header("🎨 Ilustrasi AI (Gratis)")
-    st.write("Buat gambar pendukung belajar secara instan.")
+    st.write("Visualisasikan materi ini dengan gambar HD.")
     
     col_input, col_style = st.columns([3, 1])
     with col_input:
         default_prompt = f"Illustration of {pilihan_bab} in {st.session_state.topik_saat_ini}, educational style, detailed, 8k" if pilihan_bab else "A cute robot teacher"
         prompt_gambar = st.text_input("Prompt Gambar:", value=default_prompt)
     with col_style:
-        gaya_gambar = st.selectbox("Gaya:", ["flux", "turbo", "midjourney", "anime", "3d-model"])
+        gaya_gambar = st.selectbox("Gaya:", ["flux", "midjourney", "anime", "3d-model"])
 
     if st.button("🖌️ Lukis Sekarang"):
         with st.spinner("Sedang melukis..."):
@@ -285,7 +299,8 @@ with tab_gambar:
             if img:
                 st.session_state.last_image = img
                 st.success("Jadi!")
-            else: st.warning("Gagal. Coba lagi.")
+            else: 
+                st.error("Gagal. Coba lagi.")
 
     if st.session_state.last_image:
         st.image(st.session_state.last_image, caption="Hasil Generasi AI", use_container_width=True)
@@ -293,7 +308,7 @@ with tab_gambar:
         st.session_state.last_image.save(buf, format="PNG")
         st.download_button("⬇️ Download Gambar", data=buf.getvalue(), file_name="guru_saku_img.png", mime="image/png")
 
-# === TAB 4: KUIS ===
+# === TAB 4: KUIS (INTERAKTIF) ===
 with tab_kuis:
     st.header("📝 Kuis")
     if st.button("🎲 Buat Kuis"):
