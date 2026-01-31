@@ -125,8 +125,8 @@ def temukan_json_murni(text):
 def generate_audio_memory(text):
     try:
         mp3_fp = BytesIO()
-        # Batasi text agar tidak timeout/error
-        tts = gTTS(text=text[:3000], lang='id')
+        # Batasi text agar tidak timeout/error (Dinaikkan ke 4000 char untuk materi panjang)
+        tts = gTTS(text=text[:4000], lang='id')
         tts.write_to_fp(mp3_fp)
         mp3_fp.seek(0)
         return mp3_fp
@@ -188,7 +188,8 @@ def ask_the_brain(provider, model_name, api_key, prompt):
     try:
         if provider == "Google Gemini":
             genai.configure(api_key=api_key)
-            generation_config = genai.types.GenerationConfig(temperature=0.3)
+            # Temperature agak rendah agar tetap faktual meski panjang
+            generation_config = genai.types.GenerationConfig(temperature=0.2)
             # Safety settings longgar agar materi edukasi biologi/sejarah tidak terblokir
             safety = [{"category": c, "threshold": "BLOCK_NONE"} for c in ["HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT"]]
             model = genai.GenerativeModel(model_name, safety_settings=safety, generation_config=generation_config)
@@ -198,11 +199,11 @@ def ask_the_brain(provider, model_name, api_key, prompt):
             client = Groq(api_key=api_key)
             chat = client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "Kamu adalah Dosen Senior yang ahli membuat materi terstruktur dan rapi."},
+                    {"role": "system", "content": "Kamu adalah Dosen Senior. Berikan penjelasan yang sangat mendalam, detail, dan akademis."},
                     {"role": "user", "content": prompt}
                 ],
                 model=model_name, 
-                temperature=0.3
+                temperature=0.2
             )
             return chat.choices[0].message.content
     except Exception as e:
@@ -254,11 +255,13 @@ with st.sidebar:
         api_key = ""; model_name = ""
         
         if provider == "Google Gemini":
-            model_name = st.selectbox("Model:", ["gemini-2.0-flash", "gemini-1.5-flash"])
+            # UPDATE: Hanya Gemini 2.5 Flash
+            model_name = st.selectbox("Model:", ["gemini-2.5-flash"])
             if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]; st.success("API Key Terdeteksi")
             else: api_key = st.text_input("Gemini API Key:", type="password")
         elif provider == "Groq (Super Cepat)":
-            model_name = st.selectbox("Model:", ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"])
+            # UPDATE: Llama 3.3 Versatile dan 3.1 Instant
+            model_name = st.selectbox("Model:", ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"])
             if "GROQ_API_KEY" in st.secrets: api_key = st.secrets["GROQ_API_KEY"]; st.success("API Key Terdeteksi")
             else: api_key = st.text_input("Groq API Key:", type="password")
 
@@ -322,34 +325,43 @@ with tab_belajar:
         if st.button("🚀 Mulai Belajar Bab Ini", type="primary"):
             if not api_key: st.error("API Key belum diisi.")
             else:
-                with st.spinner("Guru sedang menulis modul interaktif & menggambar diagram..."):
-                    # PROMPT KHUSUS FORMATTING
+                with st.spinner("Guru sedang menulis modul PREMIUM & menggambar diagram..."):
+                    # PROMPT "DAGING" (HIGH QUALITY)
                     p = f"""
-                    Saya belajar '{st.session_state.topik_saat_ini}', Bab '{pilihan_bab}'.
-                    Gaya: {gaya_belajar}.
+                    Saya sedang mempelajari '{st.session_state.topik_saat_ini}', Bab '{pilihan_bab}'.
+                    Gaya Belajar: {gaya_belajar}.
                     
-                    Tugasmu: Buat MODUL INTERAKTIF.
+                    Tugasmu: Buat MODUL PEMBELAJARAN PREMIUM (Kualitas Tinggi/Daging).
                     
-                    INSTRUKSI FORMATTING (WAJIB):
-                    1. Paragraf pertama adalah Intro Singkat (tanpa heading).
-                    2. Gunakan '## Judul' untuk memisahkan sub-topik.
-                    3. Isi materi gunakan bullet points agar enak dibaca.
-                    4. Berikan emoji pada setiap judul '##'.
+                    INSTRUKSI KONTEN (PENTING):
+                    1. **Dalaman & Detail:** Jelaskan materi secara MENDALAM dan KOMPREHENSIF. Minimal 1000 kata.
+                    2. **Substansial:** Hindari kalimat pengisi (filler). Fokus pada fakta, analisis, mekanisme, dan "why/how".
+                    3. **Analogi & Contoh:** Gunakan analogi cerdas dan contoh kasus nyata (real-world) untuk memperjelas konsep sulit.
+                    4. **Struktur Logis:** Mulai dari definisi, lanjut ke mekanisme/proses, lalu implikasi/aplikasi, dan kritik/tantangan.
+
+                    INSTRUKSI FORMATTING (WAJIB AGAR INTERAKTIF):
+                    1. Paragraf pertama: Intro yang menarik (hook) tanpa heading.
+                    2. Gunakan '## Judul' (Heading 2) untuk memisahkan setiap segmen utama.
+                    3. Isi setiap segmen: Gunakan kombinasi paragraf pendek dan bullet points.
+                    4. Berikan emoji yang relevan pada setiap judul '##'.
                     
-                    Struktur:
-                    [Intro]
-                    ## 🎯 Konsep Utama
-                    ...
-                    ## ⚙️ Mekanisme / Cara Kerja
-                    ...
-                    ## 💡 Contoh Kasus
-                    ...
-                    ## 📝 Kesimpulan
-                    ...
+                    Struktur yang Diharapkan:
+                    [Intro Singkat]
+                    ## 🎯 Konsep Inti & Definisi
+                    [Penjelasan mendalam...]
+                    ## ⚙️ Mekanisme & Cara Kerja
+                    [Langkah-langkah teknis/detail...]
+                    ## 🔬 Analisis Mendalam / Studi Kasus
+                    [Bagian "Daging": Analisis, pro-kontra, atau aplikasi nyata...]
+                    ## 💡 Wawasan Tambahan / Tips Ahli
+                    [Tips praktis atau fakta unik...]
+                    ## 📝 Kesimpulan & Takeaway
+                    [Ringkasan padat...]
                     
                     INSTRUKSI DIAGRAM:
-                    Di paling bawah, buat kode Graphviz DOT: `digraph G {{...}}`.
-                    Style: node [style=filled, fillcolor=lightblue, shape=box, fontname="Arial"];
+                    Di baris paling akhir, buat kode Graphviz DOT: `digraph G {{...}}`.
+                    Pastikan diagram merepresentasikan alur atau hubungan konsep di atas dengan jelas.
+                    Style: node [style=filled, fillcolor=lightblue, shape=box, fontname="Arial", penwidth=2];
                     """
                     
                     full_res = ask_the_brain(provider, model_name, api_key, p)
