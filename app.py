@@ -21,7 +21,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Custom CSS (Hanya untuk tombol & expander, Chat pakai Native)
 st.markdown("""
 <style>
     html, body, [class*="css"] { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
@@ -32,36 +32,22 @@ st.markdown("""
     .stButton>button:hover { background-color: #004B91; transform: scale(1.02); }
     .stSelectbox, .stTextInput { margin-bottom: 15px; }
     
-    /* Styling Header Expander */
+    /* Styling Header Expander agar lebih tegas */
     .streamlit-expanderHeader {
         background-color: #f0f2f6;
-        color: #0068C9;
-        font-weight: bold;
+        color: #004B91;
+        font-weight: 700;
         border-radius: 8px;
-    }
-    
-    /* Chat Bubble Style */
-    .chat-user {
-        background-color: #e6f3ff;
-        padding: 10px;
-        border-radius: 10px;
-        margin-bottom: 10px;
-        text-align: right;
-    }
-    .chat-ai {
-        background-color: #f0f0f0;
-        padding: 10px;
-        border-radius: 10px;
-        margin-bottom: 10px;
-        text-align: left;
+        border: 1px solid #e0e0e0;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ⚙️ FUNGSI PENDUKUNG
+# ⚙️ FUNGSI VISUALISASI CANGGIH
 # ==========================================
 def render_interactive_graphviz(dot_code):
+    """Render diagram dengan fitur Zoom & Pan"""
     try:
         safe_code = urllib.parse.quote(dot_code)
         url = f"https://quickchart.io/graphviz?graph={safe_code}&format=svg"
@@ -92,7 +78,7 @@ def render_interactive_graphviz(dot_code):
         </html>
         """
         components.html(html_code, height=500, scrolling=False)
-        st.caption("💡 **Tips:** Gunakan tombol **(+)** dan **(-)** di pojok diagram untuk Zoom.")
+        st.caption("💡 **Zoom:** Klik tombol (+) dan (-) di pojok kiri atas diagram.")
     except:
         st.graphviz_chart(dot_code)
 
@@ -126,7 +112,7 @@ def ask_the_brain(provider, model_name, api_key, prompt):
         elif provider == "Groq (Super Cepat)":
             client = Groq(api_key=api_key)
             chat_completion = client.chat.completions.create(
-                messages=[{"role": "system", "content": "Kamu adalah guru ahli."}, {"role": "user", "content": prompt}],
+                messages=[{"role": "system", "content": "Kamu adalah Profesor Ahli yang menjelaskan materi secara sangat mendalam dan panjang lebar."}, {"role": "user", "content": prompt}],
                 model=model_name, temperature=0.7
             )
             return chat_completion.choices[0].message.content
@@ -150,13 +136,17 @@ def get_clean_image_url(prompt, style_model):
     return f"https://pollinations.ai/p/{encoded_prompt}?width=1024&height=768&seed={seed}&model={style_model}&nologo=true"
 
 def render_interactive_content(text):
+    # Pisahkan berdasarkan heading markdown ##
     sections = re.split(r'(^##\s+.*)', text, flags=re.MULTILINE)
     if sections[0].strip(): st.markdown(sections[0])
+    
+    # Render setiap bagian sebagai expander
     for i in range(1, len(sections), 2):
         if i + 1 < len(sections):
             title = sections[i].replace("##", "").strip()
             content = sections[i+1].strip()
-            with st.expander(f"👉 {title}"): st.markdown(content)
+            with st.expander(f"📘 {title}"): # Tambah ikon buku biar cantik
+                st.markdown(content)
 
 # ==========================================
 # 🔒 LOGIN & STATE
@@ -176,11 +166,11 @@ if not st.session_state.is_logged_in:
     with col2: st.text_input("Password:", type="password", key="input_pw", on_change=check_password)
     st.stop()
 
-# Init State (Tambah chat_history)
+# Init State
 for k, v in {
     'kurikulum':[], 'materi_sekarang':"", 'quiz_data':None, 'diagram_code':"", 
     'topik_saat_ini':"", 'audio_path':None, 'current_image_url': None,
-    'chat_history': [] # 💬 History Chat Baru
+    'chat_history': []
 }.items():
     if k not in st.session_state: st.session_state[k] = v
 
@@ -209,8 +199,8 @@ with st.sidebar:
     st.markdown("---")
     st.header("🎛️ Kontrol Belajar")
     with st.container(border=True):
-        topik_input = st.text_input("Topik:", placeholder="Cth: Dinosaurus")
-        gaya_belajar = st.selectbox("Gaya:", ["👶 Pemula", "💡 Visual", "🏫 Akademis", "🚀 Praktis"])
+        topik_input = st.text_input("Topik:", placeholder="Cth: Geologi")
+        gaya_belajar = st.selectbox("Gaya:", ["👶 Pemula", "💡 Visual", "🏫 Akademis (Kuliah)", "🚀 Praktis (Kerja)"])
         
         if st.button("Buat Kurikulum"):
             if not api_key: st.error("Isi API Key!")
@@ -223,7 +213,7 @@ with st.sidebar:
                     else:
                         st.session_state.kurikulum = [l.strip().lstrip('1234567890.-* ') for l in res.split('\n') if l.strip()][:5]
                         st.session_state.materi_sekarang = ""; st.session_state.diagram_code = ""; st.session_state.quiz_data = None; st.session_state.current_image_url = None
-                        st.session_state.chat_history = [] # Reset chat kalau ganti topik
+                        st.session_state.chat_history = [] 
                         st.toast("Siap!")
 
     if st.session_state.kurikulum:
@@ -235,27 +225,39 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v40)")
-    st.info("Fitur Baru: Chatbot Guru! Bisa tanya jawab langsung.")
+    st.title("🎓 Guru Saku Ultimate (v41)")
+    st.info("Fitur Baru: Materi Super Detail & Tampilan Chat WhatsApp Style!")
 
-# --- 5 TAB OUTPUT (TAB 5 BARU) ---
-tab_belajar, tab_video, tab_gambar, tab_kuis, tab_chat = st.tabs(["📚 Materi", "🎬 Video", "🎨 Ilustrasi", "📝 Kuis", "💬 Tanya Guru"])
+# --- 5 TAB OUTPUT ---
+tab_belajar, tab_video, tab_gambar, tab_kuis, tab_chat = st.tabs(["📚 Materi (Deep)", "🎬 Video", "🎨 Ilustrasi", "📝 Kuis", "💬 Tanya Guru"])
 
-# === TAB 1: MATERI ===
+# === TAB 1: MATERI (PROMPT DI-UPGRADE) ===
 with tab_belajar:
     if st.session_state.kurikulum and pilihan_bab:
         st.header(f"🎓 {st.session_state.topik_saat_ini}")
         st.caption(f"Bab: {pilihan_bab} | Guru: {model_name}")
         
-        if st.button("✨ Buka Materi"):
+        if st.button("✨ Buka Materi Lengkap"):
             if not api_key: st.error("API Key kosong.")
             else:
-                with st.spinner("Menulis materi & Menggambar Diagram..."):
+                with st.spinner("Menulis materi Panjang & Menggambar Diagram..."):
+                    # --- PROMPT MAUT UNTUK MATERI PANJANG ---
                     p = f"""
                     Saya belajar '{st.session_state.topik_saat_ini}', Bab '{pilihan_bab}'.
                     Gaya: {gaya_belajar}.
-                    TUGAS 1: Jelaskan materi. WAJIB: Gunakan Heading 2 (##) untuk Sub-Bab.
-                    TUGAS 2: Buat DIAGRAM Graphviz DOT. Gunakan `digraph G {{ ... }}`. Rankdir TD.
+                    
+                    TUGAS 1 (MATERI): 
+                    Jelaskan materi ini secara **SANGAT MENDALAM, PANJANG, DAN KOMPREHENSIF**.
+                    - Jangan hanya ringkasan. Berikan penjelasan detail layaknya buku teks kuliah atau jurnal ilmiah.
+                    - Sertakan: Definisi, Sejarah, Cara Kerja/Mekanisme, Studi Kasus/Contoh Nyata, Kelebihan/Kekurangan, dan Masa Depan.
+                    - Minimal 1000 kata jika perlu.
+                    - **WAJIB:** Gunakan Heading 2 Markdown (##) untuk memisahkan setiap Sub-Bab agar saya bisa memecahnya menjadi menu interaktif.
+                    
+                    TUGAS 2 (DIAGRAM): 
+                    Buat DIAGRAM Peta Konsep (Graphviz DOT).
+                    - Gunakan `digraph G {{ ... }}`.
+                    - Node style: `node [style="filled", fillcolor="lightblue", shape="box", fontname="Arial"]`.
+                    - Rankdir: TD (Atas ke Bawah).
                     """
                     full = ask_the_brain(provider, model_name, api_key, p)
                     if "⛔" in full or "⚠️" in full: st.error(full)
@@ -272,10 +274,14 @@ with tab_belajar:
         
         if st.session_state.diagram_code:
             st.markdown("### 🧩 Peta Konsep"); render_interactive_graphviz(st.session_state.diagram_code)
+        
         if st.session_state.materi_sekarang:
-            st.markdown("---"); render_interactive_content(st.session_state.materi_sekarang)
+            st.markdown("---")
+            # Render Accordion Interaktif
+            render_interactive_content(st.session_state.materi_sekarang)
+            
         if st.session_state.diagram_code:
-            st.markdown("---"); 
+            st.markdown("---")
             with st.expander("🔄 Ringkasan Visual"): render_interactive_graphviz(st.session_state.diagram_code)
 
 # === TAB 2: VIDEO ===
@@ -284,7 +290,7 @@ with tab_video:
     if st.session_state.materi_sekarang:
         if st.button("🎙️ Buat Suara Guru"):
             clean_text = st.session_state.materi_sekarang.replace("#", "").replace("*", "")
-            aud = generate_audio(clean_text[:1000])
+            aud = generate_audio(clean_text[:1500]) # Tambah limit karakter jadi 1500
             if aud: st.session_state.audio_path = aud; st.success("Selesai!")
         if st.session_state.audio_path:
             c1, c2 = st.columns(2)
@@ -335,38 +341,39 @@ with tab_kuis:
                     else: st.error(f"No {i+1}: Salah. ({q['answer']})")
                 st.metric("Skor", f"{sc/len(st.session_state.quiz_data)*100:.0f}")
 
-# === TAB 5: CHATBOT GURU (FITUR BARU) ===
+# === TAB 5: CHATBOT GURU (UI DIPERBAIKI) ===
 with tab_chat:
     st.header("💬 Tanya Guru")
-    st.caption("Diskusikan materi ini lebih dalam dengan AI.")
+    st.caption("Diskusikan materi ini lebih dalam. Guru siap menjawab!")
     
-    # Tampilkan History Chat
-    for chat in st.session_state.chat_history:
-        role_class = "chat-user" if chat["role"] == "user" else "chat-ai"
-        align = "right" if chat["role"] == "user" else "left"
-        st.markdown(f'<div style="text-align: {align};"><span class="{role_class}">{chat["message"]}</span></div>', unsafe_allow_html=True)
-        st.write("") # Spacer
+    # 1. Tampilkan History Chat dengan UI Native Streamlit (Lebih Bagus)
+    for message in st.session_state.chat_history:
+        # Gunakan 'user' icon untuk siswa, 'assistant' icon untuk guru
+        role = "user" if message["role"] == "user" else "assistant"
+        with st.chat_message(role):
+            st.markdown(message["message"])
 
-    # Input User
-    user_question = st.chat_input("Tanya sesuatu tentang bab ini...")
-    
-    if user_question:
-        # 1. Tambah pertanyaan user ke history
+    # 2. Input User
+    if user_question := st.chat_input("Apa yang masih bingung?"):
+        # Tampilkan pesan user langsung
         st.session_state.chat_history.append({"role": "user", "message": user_question})
+        with st.chat_message("user"):
+            st.markdown(user_question)
         
-        # 2. Kirim ke AI (Sertakan konteks materi)
+        # Proses AI
         context_prompt = f"""
-        Konteks Materi: {st.session_state.materi_sekarang[:2000]}... (dan seterusnya).
+        Kamu adalah Guru Ahli.
+        Konteks Materi Saat Ini: {st.session_state.materi_sekarang[:3000]}...
+        
         Pertanyaan Siswa: {user_question}
         
-        Jawablah sebagai guru yang ramah dan membantu. Pendek dan jelas saja.
+        Jawablah dengan ramah, jelas, dan membantu.
         """
         
-        with st.spinner("Guru sedang mengetik..."):
-            answer = ask_the_brain(provider, model_name, api_key, context_prompt)
+        with st.chat_message("assistant"):
+            with st.spinner("Guru sedang mengetik..."):
+                answer = ask_the_brain(provider, model_name, api_key, context_prompt)
+                st.markdown(answer)
         
-        # 3. Tambah jawaban AI ke history
+        # Simpan jawaban AI
         st.session_state.chat_history.append({"role": "ai", "message": answer})
-        
-        # 4. Rerun agar chat muncul
-        st.rerun()
