@@ -32,7 +32,7 @@ st.markdown("""
     .stButton>button:hover { background-color: #004B91; transform: scale(1.02); }
     .stSelectbox, .stTextInput { margin-bottom: 15px; }
     
-    /* Styling Header Expander (Menu Lipat) */
+    /* Styling Header Expander */
     .streamlit-expanderHeader {
         background-color: #f0f2f6;
         color: #0068C9;
@@ -43,19 +43,79 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ⚙️ FUNGSI BEDAH KODE (GRAPHVIZ)
+# ⚙️ FUNGSI BARU: DIAGRAM ZOOMABLE (KACA PEMBESAR) 🔍
+# ==========================================
+def render_interactive_graphviz(dot_code):
+    """
+    Merender diagram dengan fitur ZOOM (Cubit/Tombol +/-).
+    Menggunakan library svg-pan-zoom.js via CDN.
+    """
+    try:
+        # 1. Bersihkan kode DOT agar URL aman
+        # Hapus baris baru dan kutip ganda yang bisa merusak URL
+        safe_code = urllib.parse.quote(dot_code)
+        
+        # 2. Generate URL SVG dari QuickChart API (Server rendering)
+        url = f"https://quickchart.io/graphviz?graph={safe_code}&format=svg"
+        
+        # 3. Buat HTML dengan Library Zoom
+        html_code = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <script src="https://bumbu.me/svg-pan-zoom/dist/svg-pan-zoom.min.js"></script>
+            <style>
+                body, html {{ margin: 0; padding: 0; height: 100%; overflow: hidden; background: white; }}
+                #container {{ width: 100%; height: 100%; border: 1px solid #ddd; border-radius: 8px; }}
+                #diagram-svg {{ width: 100%; height: 100%; }}
+            </style>
+        </head>
+        <body>
+            <div id="container">
+                <object id="diagram-svg" type="image/svg+xml" data="{url}"></object>
+            </div>
+            
+            <script>
+                // Tunggu sampai gambar SVG selesai dimuat
+                window.onload = function() {{
+                    var svgElement = document.getElementById('diagram-svg');
+                    
+                    // Aktifkan Pan-Zoom setelah load
+                    svgElement.addEventListener('load', function() {{
+                        svgPanZoom(svgElement, {{
+                            zoomEnabled: true,
+                            controlIconsEnabled: true, // INI YANG MENAMPILKAN TOMBOL +/-
+                            fit: true,
+                            center: true,
+                            minZoom: 0.5,
+                            maxZoom: 10
+                        }});
+                    }});
+                }};
+            </script>
+        </body>
+        </html>
+        """
+        # Render di Streamlit dengan tinggi 500px
+        components.html(html_code, height=500, scrolling=False)
+        
+        # Tombol download backup
+        st.caption("💡 **Tips:** Gunakan tombol **(+)** dan **(-)** di pojok diagram untuk Zoom In/Out. Di HP bisa geser.")
+        st.markdown(f"[⬇️ Download Diagram (Jika Error)]({url})")
+        
+    except Exception as e:
+        st.error("Gagal memuat diagram interaktif. Menampilkan versi statis.")
+        st.graphviz_chart(dot_code)
+
+# ==========================================
+# ⚙️ FUNGSI LAINNYA
 # ==========================================
 def bersihkan_kode_dot(text):
-    """
-    Mengambil kode digraph G { ... } dari respon AI dengan presisi tinggi.
-    """
     start_index = text.find("digraph")
     if start_index == -1: return None 
-
     balance = 0
     found_first_brace = False
     end_index = -1
-
     for i in range(start_index, len(text)):
         char = text[i]
         if char == '{':
@@ -63,19 +123,12 @@ def bersihkan_kode_dot(text):
             found_first_brace = True
         elif char == '}':
             balance -= 1
-        
         if found_first_brace and balance == 0:
             end_index = i + 1
             break
-    
-    if end_index != -1:
-        return text[start_index:end_index]
-    else:
-        return None
+    if end_index != -1: return text[start_index:end_index]
+    else: return None
 
-# ==========================================
-# 🧠 MESIN KECERDASAN (AI BRAIN)
-# ==========================================
 def ask_the_brain(provider, model_name, api_key, prompt):
     try:
         if provider == "Google Gemini":
@@ -102,19 +155,15 @@ def ask_the_brain(provider, model_name, api_key, prompt):
                 temperature=0.7,
             )
             return chat_completion.choices[0].message.content
-            
     except Exception as e:
         error_msg = str(e)
         if "404" in error_msg:
             return f"⛔ **MODEL ERROR (404)**\n\nModel `{model_name}` bermasalah. Coba ganti ke `gemini-2.0-flash`."
         elif "429" in error_msg:
-            return "⛔ **KUOTA HABIS (Limit 429)**\n\nGoogle Gemini 2.5 membatasi kecepatan. \n👉 **Solusi:** Tunggu 1 menit atau pakai **Groq**."
+            return "⛔ **KUOTA HABIS**\n\nTunggu 1 menit atau pakai **Groq**."
         else:
             return f"⚠️ ERROR {provider}: {error_msg}"
 
-# ==========================================
-# ⚙️ FUNGSI PENDUKUNG LAIN
-# ==========================================
 def generate_audio(text):
     try:
         tts = gTTS(text=text, lang='id')
@@ -130,14 +179,9 @@ def get_clean_image_url(prompt, style_model):
     return f"https://pollinations.ai/p/{encoded_prompt}?width=1024&height=768&seed={seed}&model={style_model}&nologo=true"
 
 def render_interactive_content(text):
-    """
-    Memecah teks Markdown berdasarkan Heading 2 (##) menjadi Expander Interaktif.
-    """
     sections = re.split(r'(^##\s+.*)', text, flags=re.MULTILINE)
-    
     if sections[0].strip():
         st.markdown(sections[0])
-    
     for i in range(1, len(sections), 2):
         if i + 1 < len(sections):
             title = sections[i].replace("##", "").strip()
@@ -208,14 +252,6 @@ with st.sidebar:
         topik_input = st.text_input("Topik:", placeholder="Cth: Dinosaurus")
         gaya_belajar = st.selectbox("Gaya:", ["👶 Pemula", "💡 Visual", "🏫 Akademis", "🚀 Praktis"])
         
-        with st.expander("ℹ️ Penjelasan 4 Gaya Belajar", expanded=False):
-            st.markdown("""
-            1. **👶 Pemula:** Penjelasan simpel.
-            2. **💡 Visual:** Banyak analogi.
-            3. **🏫 Akademis:** Formal dan detail.
-            4. **🚀 Praktis:** To-the-point.
-            """)
-
         if st.button("Buat Kurikulum"):
             if not api_key: st.error("Isi API Key!")
             elif topik_input:
@@ -240,8 +276,8 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v38)")
-    st.info("Fitur: Materi Interaktif (Klik) & Diagram Zoomable!")
+    st.title("🎓 Guru Saku Ultimate (v39)")
+    st.info("Peta Konsep kini punya tombol Zoom (+/-) dan bisa digeser!")
 
 # --- 4 TAB OUTPUT ---
 tab_belajar, tab_video, tab_gambar, tab_kuis = st.tabs(["📚 Materi & Diagram", "🎬 Video AI", "🎨 Ilustrasi AI", "📝 Kuis"])
@@ -255,20 +291,18 @@ with tab_belajar:
         if st.button("✨ Buka Materi"):
             if not api_key: st.error("API Key kosong.")
             else:
-                with st.spinner("Menulis materi interaktif & Menggambar Diagram..."):
-                    # PROMPT KHUSUS: Heading 2 (##) & Graphviz
+                with st.spinner("Menulis materi & Menggambar Diagram Canggih..."):
                     p = f"""
                     Saya belajar '{st.session_state.topik_saat_ini}', Bab '{pilihan_bab}'.
                     Gaya: {gaya_belajar}.
                     
                     TUGAS 1: Jelaskan materi secara lengkap.
-                    WAJIB: Gunakan Heading 2 Markdown (##) untuk setiap Sub-Bab agar bisa saya jadikan menu interaktif.
+                    WAJIB: Gunakan Heading 2 Markdown (##) untuk setiap Sub-Bab agar interaktif.
                     
                     TUGAS 2: Buat DIAGRAM Peta Konsep (Graphviz DOT).
                     - Gunakan `digraph G {{ ... }}`.
                     - Node style: `node [style="filled", fillcolor="lightblue", shape="box", fontname="Arial"]`.
-                    - Rankdir: LR (Kiri ke Kanan) atau TD (Atas Bawah) yang sesuai.
-                    - Buat diagram yang detail tapi kodenya valid.
+                    - Rankdir: TD (Atas ke Bawah) agar rapi di HP.
                     """
                     full = ask_the_brain(provider, model_name, api_key, p)
                     
@@ -278,7 +312,6 @@ with tab_belajar:
                         kode_dot = bersihkan_kode_dot(full)
                         if kode_dot:
                             st.session_state.diagram_code = kode_dot
-                            # Hapus diagram dari teks materi agar tidak duplikat
                             idx = full.find("digraph")
                             st.session_state.materi_sekarang = full[:idx].strip()
                         else:
@@ -287,28 +320,22 @@ with tab_belajar:
                             
                         st.session_state.quiz_data = None; st.session_state.audio_path = None
         
-        # --- 1. DIAGRAM DI ATAS (BISA ZOOM) ---
+        # --- 1. DIAGRAM ZOOMABLE DI ATAS ---
         if st.session_state.diagram_code:
-            st.markdown("### 🧩 Peta Konsep (Awal)")
-            st.info("💡 **Tips Zoom:** Arahkan mouse ke diagram, lalu klik ikon panah dua arah (⤢) di pojok kanan atas diagram untuk masuk mode layar penuh & zoom.")
-            try:
-                # use_container_width=True agar diagram menyesuaikan lebar layar
-                st.graphviz_chart(st.session_state.diagram_code, use_container_width=True)
-            except Exception as e:
-                st.error("Gagal merender diagram.")
+            st.markdown("### 🧩 Peta Konsep (Interaktif)")
+            # PANGGIL FUNGSI BARU KITA
+            render_interactive_graphviz(st.session_state.diagram_code)
 
-        # --- 2. MATERI INTERAKTIF (ACCORDION) ---
+        # --- 2. MATERI INTERAKTIF ---
         if st.session_state.materi_sekarang:
             st.markdown("---")
             render_interactive_content(st.session_state.materi_sekarang)
 
-        # --- 3. DIAGRAM DI AKHIR (REVIEW - BISA ZOOM) ---
+        # --- 3. DIAGRAM ZOOMABLE DI AKHIR ---
         if st.session_state.diagram_code:
             st.markdown("---")
-            st.markdown("### 🔄 Ringkasan Visual (Review)")
-            try:
-                st.graphviz_chart(st.session_state.diagram_code, use_container_width=True)
-            except: pass
+            with st.expander("🔄 Lihat Diagram Lagi (Review)"):
+                render_interactive_graphviz(st.session_state.diagram_code)
 
 # === TAB 2: VIDEO ===
 with tab_video:
@@ -325,7 +352,7 @@ with tab_video:
             with c2: 
                 st.info("🖼️ Lihat Diagram")
                 if st.session_state.diagram_code:
-                    st.graphviz_chart(st.session_state.diagram_code, use_container_width=True)
+                    render_interactive_graphviz(st.session_state.diagram_code)
     else: st.warning("Buka materi di Tab 1 dulu.")
 
 # === TAB 3: GAMBAR (HTML CLIENT SIDE) ===
