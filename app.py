@@ -5,11 +5,7 @@ import json
 import streamlit.components.v1 as components
 import re
 from gtts import gTTS
-import tempfile
-import requests
-from PIL import Image
 from io import BytesIO
-import random
 import urllib.parse
 import time
 
@@ -42,7 +38,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ⚙️ FUNGSI VISUALISASI & PENDUKUNG
+# ⚙️ FUNGSI PENDUKUNG
 # ==========================================
 def render_interactive_graphviz(dot_code):
     try:
@@ -53,16 +49,31 @@ def render_interactive_graphviz(dot_code):
         <html>
         <head>
             <script src="https://bumbu.me/svg-pan-zoom/dist/svg-pan-zoom.min.js"></script>
-            <style>body, html {{ margin: 0; padding: 0; height: 100%; overflow: hidden; background: white; }} #container {{ width: 100%; height: 100%; }} #diagram-svg {{ width: 100%; height: 100%; }}</style>
+            <style>
+                body, html {{ margin: 0; padding: 0; height: 100%; overflow: hidden; background: white; }}
+                #container {{ width: 100%; height: 100%; border: 1px solid #ddd; border-radius: 8px; }}
+                #diagram-svg {{ width: 100%; height: 100%; }}
+            </style>
         </head>
         <body>
-            <div id="container"><object id="diagram-svg" type="image/svg+xml" data="{url}"></object></div>
-            <script>window.onload = function() {{ var svgElement = document.getElementById('diagram-svg'); svgElement.addEventListener('load', function() {{ svgPanZoom(svgElement, {{ zoomEnabled: true, controlIconsEnabled: true, fit: true, center: true, minZoom: 0.5, maxZoom: 10 }}); }}); }};</script>
+            <div id="container">
+                <object id="diagram-svg" type="image/svg+xml" data="{url}"></object>
+            </div>
+            <script>
+                window.onload = function() {{
+                    var svgElement = document.getElementById('diagram-svg');
+                    svgElement.addEventListener('load', function() {{
+                        svgPanZoom(svgElement, {{ zoomEnabled: true, controlIconsEnabled: true, fit: true, center: true, minZoom: 0.5, maxZoom: 10 }});
+                    }});
+                }};
+            </script>
         </body>
-        </html>"""
+        </html>
+        """
         components.html(html_code, height=500, scrolling=False)
         st.caption("💡 **Zoom:** Klik tombol (+) dan (-) di pojok kiri atas diagram.")
-    except: st.graphviz_chart(dot_code)
+    except:
+        st.graphviz_chart(dot_code)
 
 def bersihkan_kode_dot(text):
     start_index = text.find("digraph")
@@ -77,34 +88,39 @@ def bersihkan_kode_dot(text):
 
 def ask_the_brain(provider, model_name, api_key, prompt):
     try:
+        # TEMPERATURE DISET KE 0.3 AGAR KONSISTEN (TIDAK BERUBAH-UBAH)
         if provider == "Google Gemini":
             genai.configure(api_key=api_key)
             safety_settings = [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}, {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"}, {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"}, {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}]
             time.sleep(1)
-            model = genai.GenerativeModel(model_name, safety_settings=safety_settings)
+            # Generation Config untuk konsistensi
+            generation_config = genai.types.GenerationConfig(temperature=0.3)
+            model = genai.GenerativeModel(model_name, safety_settings=safety_settings, generation_config=generation_config)
             response = model.generate_content(prompt)
             return response.text
         elif provider == "Groq (Super Cepat)":
             client = Groq(api_key=api_key)
-            chat_completion = client.chat.completions.create(messages=[{"role": "system", "content": "Kamu adalah Profesor Ahli."}, {"role": "user", "content": prompt}], model=model_name, temperature=0.7)
+            chat_completion = client.chat.completions.create(
+                messages=[{"role": "system", "content": "Kamu adalah Dosen Ahli yang Sangat Terstruktur."}, {"role": "user", "content": prompt}],
+                model=model_name, 
+                temperature=0.3 # Konsisten
+            )
             return chat_completion.choices[0].message.content
     except Exception as e:
         if "429" in str(e): return "⛔ **KUOTA HABIS**\n\nTunggu 1 menit atau pakai **Groq**."
         return f"⚠️ ERROR {provider}: {str(e)}"
 
-def generate_audio(text):
+# --- PERBAIKAN FITUR AUDIO (IN-MEMORY) ---
+def generate_audio_memory(text):
     try:
+        # Gunakan BytesIO (RAM) bukan file fisik agar tidak error di cloud
+        mp3_fp = BytesIO()
         tts = gTTS(text=text, lang='id')
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
-            tts.save(fp.name)
-            return fp.name
-    except: return None
-
-def get_clean_image_url(prompt, style_model):
-    safe_prompt = re.sub(r'[^a-zA-Z0-9 ]', '', prompt)
-    encoded_prompt = urllib.parse.quote(safe_prompt)
-    seed = random.randint(1, 999999)
-    return f"https://pollinations.ai/p/{encoded_prompt}?width=1024&height=768&seed={seed}&model={style_model}&nologo=true"
+        tts.write_to_fp(mp3_fp)
+        return mp3_fp
+    except Exception as e:
+        print(f"Audio Error: {e}")
+        return None
 
 def render_interactive_content(text):
     sections = re.split(r'(^##\s+.*)', text, flags=re.MULTILINE)
@@ -133,7 +149,7 @@ if not st.session_state.is_logged_in:
     with col2: st.text_input("Password:", type="password", key="input_pw", on_change=check_password)
     st.stop()
 
-for k, v in {'kurikulum':[], 'materi_sekarang':"", 'quiz_data':None, 'diagram_code':"", 'topik_saat_ini':"", 'audio_path':None, 'current_image_url': None, 'chat_history': []}.items():
+for k, v in {'kurikulum':[], 'materi_sekarang':"", 'quiz_data':None, 'diagram_code':"", 'topik_saat_ini':"", 'audio_data':None, 'chat_history': []}.items():
     if k not in st.session_state: st.session_state[k] = v
 
 # ==========================================
@@ -168,7 +184,7 @@ with st.sidebar:
                     if "⛔" in res or "⚠️" in res: st.error(res) 
                     else:
                         st.session_state.kurikulum = [l.strip().lstrip('1234567890.-* ') for l in res.split('\n') if l.strip()][:5]
-                        st.session_state.materi_sekarang = ""; st.session_state.diagram_code = ""; st.session_state.quiz_data = None; st.session_state.current_image_url = None; st.session_state.chat_history = [] 
+                        st.session_state.materi_sekarang = ""; st.session_state.diagram_code = ""; st.session_state.quiz_data = None; st.session_state.audio_data = None; st.session_state.chat_history = [] 
                         st.toast("Siap!")
 
     if st.session_state.kurikulum:
@@ -180,12 +196,13 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v42)")
-    st.info("Update: Kuis 15 Soal & Perbaikan Sistem Penilaian (Skor Akurat).")
+    st.title("🎓 Guru Saku Ultimate (v43)")
+    st.info("Update: Audio Fix, Konsistensi Materi, Tab Gambar Dihapus.")
 
-tab_belajar, tab_video, tab_gambar, tab_kuis, tab_chat = st.tabs(["📚 Materi", "🎬 Video", "🎨 Ilustrasi", "📝 Kuis (15 Soal)", "💬 Tanya Guru"])
+# --- TAB ILUSTRASI DIHAPUS ---
+tab_belajar, tab_video, tab_kuis, tab_chat = st.tabs(["📚 Materi (Deep)", "🎬 Audio Guru", "📝 Kuis (15 Soal)", "💬 Tanya Guru"])
 
-# === TAB 1: MATERI ===
+# === TAB 1: MATERI (DIPERKETAT AGAR KONSISTEN) ===
 with tab_belajar:
     if st.session_state.kurikulum and pilihan_bab:
         st.header(f"🎓 {st.session_state.topik_saat_ini}")
@@ -194,11 +211,23 @@ with tab_belajar:
             if not api_key: st.error("API Key kosong.")
             else:
                 with st.spinner("Menulis materi Panjang & Menggambar Diagram..."):
+                    # PROMPT SUPER STRICT UNTUK KONSISTENSI
                     p = f"""
                     Saya belajar '{st.session_state.topik_saat_ini}', Bab '{pilihan_bab}'.
                     Gaya: {gaya_belajar}.
-                    TUGAS 1 (MATERI): Jelaskan secara MENDALAM & PANJANG. Gunakan Heading 2 (##) untuk Sub-Bab.
-                    TUGAS 2 (DIAGRAM): Buat Graphviz DOT `digraph G {{...}}`. Node style fillcolor="lightblue".
+                    
+                    INSTRUKSI UTAMA:
+                    1. Jelaskan materi secara MENDALAM, PANJANG, dan LENGKAP (Minimal 800 kata).
+                    2. STRUKTUR WAJIB (Jangan diubah):
+                       - Pendahuluan (Tanpa Heading)
+                       - ## Konsep Dasar
+                       - ## Mekanisme / Cara Kerja
+                       - ## Studi Kasus / Contoh Nyata
+                       - ## Analisis Mendalam
+                       - ## Kesimpulan
+                    
+                    INSTRUKSI DIAGRAM: 
+                    Buat Graphviz DOT `digraph G {{...}}` di akhir respons. Node style fillcolor="lightblue". Rankdir TD.
                     """
                     full = ask_the_brain(provider, model_name, api_key, p)
                     if "⛔" in full or "⚠️" in full: st.error(full)
@@ -206,43 +235,52 @@ with tab_belajar:
                         kode_dot = bersihkan_kode_dot(full)
                         if kode_dot: st.session_state.diagram_code = kode_dot; idx = full.find("digraph"); st.session_state.materi_sekarang = full[:idx].strip()
                         else: st.session_state.diagram_code = ""; st.session_state.materi_sekarang = full
-                        st.session_state.quiz_data = None; st.session_state.audio_path = None
+                        st.session_state.quiz_data = None; st.session_state.audio_data = None # Reset Audio
+        
         if st.session_state.diagram_code: st.markdown("### 🧩 Peta Konsep"); render_interactive_graphviz(st.session_state.diagram_code)
         if st.session_state.materi_sekarang: st.markdown("---"); render_interactive_content(st.session_state.materi_sekarang)
         if st.session_state.diagram_code: st.markdown("---"); 
         with st.expander("🔄 Ringkasan Visual"): render_interactive_graphviz(st.session_state.diagram_code)
 
-# === TAB 2: VIDEO ===
+# === TAB 2: AUDIO (PERBAIKAN TOTAL) ===
 with tab_video:
-    st.header("🎬 Studio Video")
+    st.header("🎬 Audio Guru")
+    st.write("Dengarkan penjelasan materi ini (Text-to-Speech).")
+    
     if st.session_state.materi_sekarang:
-        if st.button("🎙️ Buat Suara Guru"):
-            aud = generate_audio(st.session_state.materi_sekarang.replace("#", "").replace("*", "")[:1500])
-            if aud: st.session_state.audio_path = aud; st.success("Selesai!")
-        if st.session_state.audio_path:
-            c1, c2 = st.columns(2); 
-            with c1: st.info("🔊 Dengar"); st.audio(st.session_state.audio_path)
-            with c2: st.info("🖼️ Lihat Diagram"); 
-            if st.session_state.diagram_code: render_interactive_graphviz(st.session_state.diagram_code)
-    else: st.warning("Buka materi dulu.")
+        if st.button("🎙️ Generate Suara"):
+            with st.spinner("Sedang memproses suara... (Tunggu 5-10 detik)"):
+                # Bersihkan teks dari simbol markdown agar suara bersih
+                clean_text = st.session_state.materi_sekarang.replace("#", "").replace("*", "").replace("- ", "").replace("`", "")
+                
+                # Gunakan metode In-Memory (Buffer) agar tidak error di server
+                audio_buffer = generate_audio_memory(clean_text[:2000]) # Ambil 2000 karakter awal
+                
+                if audio_buffer:
+                    st.session_state.audio_data = audio_buffer
+                    st.success("Suara berhasil dibuat!")
+                else:
+                    st.error("Gagal membuat suara. Coba lagi.")
+        
+        # Tampilkan Audio Player jika data ada
+        if st.session_state.audio_data:
+            c1, c2 = st.columns(2)
+            with c1: 
+                st.info("🔊 Putar Audio")
+                st.audio(st.session_state.audio_data, format="audio/mp3")
+            with c2: 
+                st.info("🖼️ Lihat Diagram")
+                if st.session_state.diagram_code: render_interactive_graphviz(st.session_state.diagram_code)
+    else:
+        st.warning("Silakan Buka Materi di Tab 1 terlebih dahulu.")
 
-# === TAB 3: GAMBAR ===
-with tab_gambar:
-    st.header("🎨 Ilustrasi AI")
-    col1, col2 = st.columns([3,1])
-    with col1: prompt_gambar = st.text_input("Prompt:", value=f"Illustration of {pilihan_bab} in {st.session_state.topik_saat_ini}, educational style, detailed, 8k" if pilihan_bab else "A cute robot teacher")
-    with col2: gaya = st.selectbox("Gaya:", ["flux", "turbo", "midjourney", "anime", "3d-model"])
-    if st.button("🖌️ Lukis"): st.session_state.current_image_url = get_clean_image_url(prompt_gambar, gaya); st.success("Memuat...")
-    if st.session_state.current_image_url: st.markdown(f'<div style="text-align: center;"><img src="{st.session_state.current_image_url}" style="max-width: 100%; border-radius: 10px;"><br><br><a href="{st.session_state.current_image_url}" target="_blank"><button style="background-color:#4CAF50; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer;">⬇️ Buka Penuh</button></a></div>', unsafe_allow_html=True)
-
-# === TAB 4: KUIS (DIPERBAIKI SKORNYA) ===
+# === TAB 3: KUIS ===
 with tab_kuis:
     st.header("📝 Kuis (15 Soal)")
     if st.button("🎲 Buat Kuis"):
         if not api_key: st.error("API Key?")
         elif pilihan_bab:
             with st.spinner("Membuat 15 Soal..."):
-                # Minta 15 soal
                 p = f"Buat 15 Soal Pilgan tentang '{pilihan_bab}'. Output JSON Murni: [{{'question':'..','options':['A. ..','B. ..'],'answer':'A','explanation':'..'}}] no markdown."
                 res = ask_the_brain(provider, model_name, api_key, p)
                 try:
@@ -250,36 +288,20 @@ with tab_kuis:
                     if '[' in clean: clean = clean[clean.find('['):clean.rfind(']')+1]
                     st.session_state.quiz_data = json.loads(clean)
                 except: st.error("Gagal format JSON. Coba lagi.")
-
     if st.session_state.quiz_data:
         with st.form("quiz"):
             ans = {}
             for i, q in enumerate(st.session_state.quiz_data):
-                st.markdown(f"**{i+1}. {q['question']}**")
-                # Radio button menyimpan teks lengkap (contoh: "A. Jawaban")
-                ans[i] = st.radio("Jwb:", q['options'], key=f"q{i}", label_visibility="collapsed")
-            
+                st.markdown(f"**{i+1}. {q['question']}**"); ans[i] = st.radio("Jwb:", q['options'], key=f"q{i}", label_visibility="collapsed")
             if st.form_submit_button("Cek Nilai"):
                 sc = 0
                 for i, q in enumerate(st.session_state.quiz_data):
-                    # --- PERBAIKAN LOGIKA PENILAIAN ---
-                    # Ambil huruf depan dari jawaban user (misal "A. Jawaban" -> "A")
                     user_ans_letter = ans[i].split(".")[0].strip()
-                    
-                    # Bandingkan huruf user dengan kunci jawaban AI
-                    if user_ans_letter == q['answer']: 
-                        sc += 1
-                        st.success(f"No {i+1}: Benar! ({ans[i]})")
-                    else: 
-                        st.error(f"No {i+1}: Salah. Jawaban: {q['answer']}")
-                    
-                    st.caption(f"💡 {q['explanation']}")
-                
-                final_score = (sc / len(st.session_state.quiz_data)) * 100
-                st.metric("SKOR AKHIR", f"{final_score:.0f}")
-                if final_score == 100: st.balloons()
+                    if user_ans_letter == q['answer']: sc += 1; st.success(f"No {i+1}: Benar! ({ans[i]})")
+                    else: st.error(f"No {i+1}: Salah. Jawaban: {q['answer']}"); st.caption(f"💡 {q['explanation']}")
+                st.metric("SKOR AKHIR", f"{(sc/len(st.session_state.quiz_data))*100:.0f}")
 
-# === TAB 5: CHAT ===
+# === TAB 4: CHAT ===
 with tab_chat:
     st.header("💬 Tanya Guru")
     for msg in st.session_state.chat_history:
