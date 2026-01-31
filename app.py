@@ -31,16 +31,47 @@ st.markdown("""
     }
     .stButton>button:hover { background-color: #004B91; transform: scale(1.02); }
     .stSelectbox, .stTextInput { margin-bottom: 15px; }
-    /* Box Peta Konsep */
-    .peta-konsep {
-        background-color: #f0f2f6;
-        padding: 20px;
+    .graphviz-box {
+        border: 1px solid #ddd;
         border-radius: 10px;
-        border-left: 5px solid #0068C9;
+        padding: 10px;
+        background-color: white;
         margin-bottom: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
+
+# ==========================================
+# ⚙️ FUNGSI BEDAH KODE (DARI KODE LAMA KAMU)
+# ==========================================
+def bersihkan_kode_dot(text):
+    """
+    Mengambil kode digraph G { ... } dari respon AI dengan presisi tinggi.
+    """
+    start_index = text.find("digraph")
+    if start_index == -1:
+        return None 
+
+    balance = 0
+    found_first_brace = False
+    end_index = -1
+
+    for i in range(start_index, len(text)):
+        char = text[i]
+        if char == '{':
+            balance += 1
+            found_first_brace = True
+        elif char == '}':
+            balance -= 1
+        
+        if found_first_brace and balance == 0:
+            end_index = i + 1
+            break
+    
+    if end_index != -1:
+        return text[start_index:end_index]
+    else:
+        return None
 
 # ==========================================
 # 🧠 MESIN KECERDASAN (AI BRAIN)
@@ -55,7 +86,7 @@ def ask_the_brain(provider, model_name, api_key, prompt):
                 {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
-            time.sleep(1) # Jeda anti-spam
+            time.sleep(1)
             model = genai.GenerativeModel(model_name, safety_settings=safety_settings)
             response = model.generate_content(prompt)
             return response.text
@@ -82,7 +113,7 @@ def ask_the_brain(provider, model_name, api_key, prompt):
             return f"⚠️ ERROR {provider}: {error_msg}"
 
 # ==========================================
-# ⚙️ FUNGSI PENDUKUNG
+# ⚙️ FUNGSI PENDUKUNG LAIN
 # ==========================================
 def generate_audio(text):
     try:
@@ -92,12 +123,10 @@ def generate_audio(text):
             return fp.name
     except: return None
 
-# --- FUNGSI URL GAMBAR ---
 def get_clean_image_url(prompt, style_model):
     safe_prompt = re.sub(r'[^a-zA-Z0-9 ]', '', prompt)
     encoded_prompt = urllib.parse.quote(safe_prompt)
     seed = random.randint(1, 999999)
-    # Default flux
     return f"https://pollinations.ai/p/{encoded_prompt}?width=1024&height=768&seed={seed}&model={style_model}&nologo=true"
 
 # ==========================================
@@ -121,7 +150,7 @@ if not st.session_state.is_logged_in:
 # Init State
 for k, v in {
     'kurikulum':[], 'materi_sekarang':"", 'quiz_data':None, 
-    'peta_konsep_teks':"", # Ganti Mermaid jadi Teks Biasa
+    'diagram_code':"", # INI KEMBALI JADI GRAPHVIZ CODE
     'topik_saat_ini':"", 'audio_path':None,
     'current_image_url': None 
 }.items():
@@ -183,7 +212,7 @@ with st.sidebar:
                         st.error(res) 
                     else:
                         st.session_state.kurikulum = [l.strip().lstrip('1234567890.-* ') for l in res.split('\n') if l.strip()][:5]
-                        st.session_state.materi_sekarang = ""; st.session_state.peta_konsep_teks = ""; st.session_state.quiz_data = None; st.session_state.current_image_url = None
+                        st.session_state.materi_sekarang = ""; st.session_state.diagram_code = ""; st.session_state.quiz_data = None; st.session_state.current_image_url = None
                         st.toast("Siap!")
 
     if st.session_state.kurikulum:
@@ -195,8 +224,8 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v34)")
-    st.info("Kembali ke Peta Konsep Teks (Stabil & Anti Error).")
+    st.title("🎓 Guru Saku Ultimate (v35)")
+    st.info("Fitur Diagram Graphviz (Peta Konsep) telah dikembalikan!")
 
 # --- 4 TAB OUTPUT ---
 tab_belajar, tab_video, tab_gambar, tab_kuis = st.tabs(["📚 Materi & Diagram", "🎬 Video AI", "🎨 Ilustrasi AI", "📝 Kuis"])
@@ -210,43 +239,48 @@ with tab_belajar:
         if st.button("✨ Buka Materi"):
             if not api_key: st.error("API Key kosong.")
             else:
-                with st.spinner("Menulis & Membuat Peta Konsep..."):
-                    # Prompt TANPA Mermaid, ganti ke List Hierarki
+                with st.spinner("Menulis & Menggambar Diagram (Graphviz)..."):
+                    # PROMPT KHUSUS GRAPHVIZ (DARI KODE LAMAMU)
                     p = f"""
-                    Jelaskan '{pilihan_bab}' dengan gaya {gaya_belajar}.
+                    Saya belajar '{st.session_state.topik_saat_ini}', Bab '{pilihan_bab}'.
+                    Gaya: {gaya_belajar}.
                     
-                    SETELAH PENJELASAN, BUAT 'PETA KONSEP' DALAM BENTUK LIST HIERARKI (Bullet Points).
-                    Format Peta Konsep:
-                    ### 🌳 Peta Konsep
-                    * Topik Utama
-                        * Sub-topik 1
-                            * Detail A
-                        * Sub-topik 2
+                    Tugas 1: Jelaskan materi lengkap (Markdown).
                     
-                    Pisahkan Materi dan Peta Konsep dengan jelas.
+                    Tugas 2: Buat DIAGRAM Peta Konsep (Graphviz DOT).
+                    - Gunakan `digraph G {{ ... }}`.
+                    - Node style: `node [style="filled", fillcolor="lightblue", shape="box", fontname="Arial"]`.
+                    - Rankdir: LR (Kiri ke Kanan).
+                    - Pastikan kodenya valid.
                     """
                     full = ask_the_brain(provider, model_name, api_key, p)
                     
                     if "⛔" in full or "⚠️" in full: 
                         st.error(full)
                     else:
-                        # Kita pisahkan manual (Simple Split)
-                        if "### 🌳 Peta Konsep" in full:
-                            parts = full.split("### 🌳 Peta Konsep")
-                            st.session_state.materi_sekarang = parts[0].strip()
-                            st.session_state.peta_konsep_teks = "### 🌳 Peta Konsep" + parts[1]
-                        else:
-                            st.session_state.materi_sekarang = full
-                            st.session_state.peta_konsep_teks = "⚠️ Peta konsep tidak tergenerate otomatis."
+                        # 1. Ambil Kode Diagram pakai fungsi bedah kode
+                        kode_dot = bersihkan_kode_dot(full)
                         
+                        if kode_dot:
+                            st.session_state.diagram_code = kode_dot
+                            # Hapus kode diagram dari teks materi biar ga dobel
+                            idx = full.find("digraph")
+                            st.session_state.materi_sekarang = full[:idx].strip()
+                        else:
+                            st.session_state.diagram_code = ""
+                            st.session_state.materi_sekarang = full
+                            
                         st.session_state.quiz_data = None; st.session_state.audio_path = None
         
-        # TAMPILKAN HASIL
-        if st.session_state.peta_konsep_teks:
-            st.markdown('<div class="peta-konsep">', unsafe_allow_html=True)
-            st.markdown(st.session_state.peta_konsep_teks)
-            st.markdown('</div>', unsafe_allow_html=True)
-            
+        # RENDER DIAGRAM GRAPHVIZ (YANG MUNCUL DAN BAGUS)
+        if st.session_state.diagram_code:
+            st.markdown("### 🧩 Peta Konsep")
+            try:
+                st.graphviz_chart(st.session_state.diagram_code, use_container_width=True)
+            except Exception as e:
+                st.error("Gagal merender diagram. Coba lagi.")
+                st.code(st.session_state.diagram_code)
+
         if st.session_state.materi_sekarang:
             st.markdown("---")
             st.markdown(st.session_state.materi_sekarang)
@@ -263,8 +297,9 @@ with tab_video:
             c1, c2 = st.columns(2)
             with c1: st.info("🔊 Dengar"); st.audio(st.session_state.audio_path)
             with c2: 
-                st.info("🖼️ Lihat Struktur")
-                st.markdown(st.session_state.peta_konsep_teks)
+                st.info("🖼️ Lihat Diagram")
+                if st.session_state.diagram_code:
+                    st.graphviz_chart(st.session_state.diagram_code, use_container_width=True)
     else: st.warning("Buka materi di Tab 1 dulu.")
 
 # === TAB 3: GAMBAR (HTML CLIENT SIDE) ===
