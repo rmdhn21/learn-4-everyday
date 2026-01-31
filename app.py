@@ -11,6 +11,7 @@ from PIL import Image
 from io import BytesIO
 import random
 import urllib.parse
+import time
 
 # --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(
@@ -29,19 +30,25 @@ st.markdown("""
         background-color: #0068C9; color: white; transition: all 0.3s ease;
     }
     .stButton>button:hover { background-color: #004B91; transform: scale(1.02); }
-    /* Styling container */
     .stSelectbox, .stTextInput { margin-bottom: 15px; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🧠 DUAL ENGINE (GEMINI & GROQ)
+# 🧠 MESIN KECERDASAN (AI BRAIN)
 # ==========================================
 def ask_the_brain(provider, model_name, api_key, prompt):
     try:
         if provider == "Google Gemini":
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel(model_name)
+            # Konfigurasi safety agar tidak terlalu sensitif (block)
+            safety_settings = [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+            ]
+            model = genai.GenerativeModel(model_name, safety_settings=safety_settings)
             response = model.generate_content(prompt)
             return response.text
 
@@ -56,8 +63,16 @@ def ask_the_brain(provider, model_name, api_key, prompt):
                 temperature=0.7,
             )
             return chat_completion.choices[0].message.content
+            
     except Exception as e:
-        return f"⚠️ ERROR {provider}: {str(e)}"
+        error_msg = str(e)
+        # Deteksi Error Spesifik untuk Memberi Solusi
+        if "404" in error_msg:
+            return f"⛔ **MODEL TIDAK DITEMUKAN (404)**\n\nModel `{model_name}` sedang tidak tersedia untuk API Key kamu. \n👉 **Solusi:** Coba ganti pilihan 'Model' di menu sebelah kiri (misal: ganti ke 1.5-flash atau 2.0-flash)."
+        elif "429" in error_msg:
+            return "⛔ **KUOTA HABIS (429)**\n\nKamu terlalu ngebut! Google membatasi jumlah request per menit. \n👉 **Solusi:** Tunggu 1-2 menit, atau pindah ke **Groq**."
+        else:
+            return f"⚠️ ERROR {provider}: {error_msg}"
 
 # ==========================================
 # ⚙️ FUNGSI PENDUKUNG
@@ -98,7 +113,10 @@ def generate_image_pollinations(prompt, style_model):
         encoded_prompt = urllib.parse.quote(prompt)
         seed = random.randint(1, 100000)
         url = f"[https://pollinations.ai/p/](https://pollinations.ai/p/){encoded_prompt}?width=1024&height=768&seed={seed}&model={style_model}&nologo=true"
-        response = requests.get(url)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             return Image.open(BytesIO(response.content))
         else: return None
@@ -141,41 +159,36 @@ with st.sidebar:
     model_name = ""
 
     if provider == "Google Gemini":
-        st.caption("Support Model Terbaru (v2.5)")
-        model_name = st.selectbox("Model:", [
-            "gemini-2.5-flash",
-            "gemini-2.5-pro", 
-            "gemini-2.0-flash",
-            "gemini-flash-latest"
+        st.info("💡 Tips: Jika error 404, ganti pilihan model di bawah ini satu per satu.")
+        
+        # --- DAFTAR MODEL PALING LENGKAP & STABIL ---
+        model_name = st.selectbox("Pilih Versi Gemini:", [
+            "gemini-1.5-flash",       # [STABIL] Paling aman, biasanya selalu bisa.
+            "gemini-1.5-flash-latest",# [ALTERNATIF] Versi update otomatis.
+            "gemini-2.0-flash",       # [BARU] Cepat, tapi kadang belum semua akun dapat.
+            "gemini-2.0-flash-exp",   # [EKSPERIMENTAL] Sangat baru.
+            "gemini-1.5-pro",         # [PINTAR] Lebih lambat tapi detail.
         ])
-        if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]; st.success("API Key Ready.")
+        
+        if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]; st.caption("✅ API Key Terhubung")
         else: api_key = st.text_input("Gemini Key:", type="password")
 
     elif provider == "Groq (Super Cepat)":
-        st.caption("Update: Menggunakan Llama 3.3 & 3.1")
-        # --- PERBAIKAN DI SINI: NAMA MODEL BARU ---
+        st.caption("✅ Llama 3.3 (Terbaru)")
         model_name = st.selectbox("Model:", [
-            "llama-3.3-70b-versatile", # Paling Cerdas & Baru
-            "llama-3.1-8b-instant",    # Paling Cepat (Pengganti yang lama)
-            "mixtral-8x7b-32768"       # Alternatif Stabil
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "mixtral-8x7b-32768"
         ])
-        if "GROQ_API_KEY" in st.secrets: api_key = st.secrets["GROQ_API_KEY"]; st.success("API Key Ready.")
+        if "GROQ_API_KEY" in st.secrets: api_key = st.secrets["GROQ_API_KEY"]; st.caption("✅ API Key Terhubung")
         else: api_key = st.text_input("Groq Key:", type="password")
 
     st.markdown("---")
     st.header("🎛️ Kontrol Belajar")
     with st.container(border=True):
-        topik_input = st.text_input("Topik:", placeholder="Cth: Lubang Hitam")
+        topik_input = st.text_input("Topik:", placeholder="Cth: Fotosintesis")
         gaya_belajar = st.selectbox("Gaya:", ["👶 Pemula", "💡 Visual", "🏫 Akademis", "🚀 Praktis"])
         
-        with st.expander("ℹ️ Bedanya apa?", expanded=False):
-            st.markdown("""
-            **👶 Pemula:** Simpel, bahasa anak-anak.
-            **💡 Visual:** Banyak analogi.
-            **🏫 Akademis:** Formal & detail.
-            **🚀 Praktis:** Langsung ke inti penerapan.
-            """)
-
         if st.button("Buat Kurikulum"):
             if not api_key: st.error("Isi API Key!")
             elif topik_input:
@@ -183,7 +196,9 @@ with st.sidebar:
                 with st.spinner(f"Menyusun kurikulum dengan {model_name}..."):
                     p = f"Buat 5 Judul Bab belajar '{topik_input}'. Hanya list bab."
                     res = ask_the_brain(provider, model_name, api_key, p)
-                    if "ERROR" in res: st.error(res)
+                    
+                    if "ERROR" in res or "⛔" in res: 
+                        st.error(res) 
                     else:
                         st.session_state.kurikulum = [l.strip().lstrip('1234567890.-* ') for l in res.split('\n') if l.strip()][:5]
                         st.session_state.materi_sekarang = ""; st.session_state.mermaid_code = ""; st.session_state.quiz_data = None; st.session_state.last_image = None
@@ -198,8 +213,8 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v19)")
-    st.info("Pilih Topik di kiri. Groq sudah diperbarui ke versi Llama 3.3!")
+    st.title("🎓 Guru Saku Ultimate (v21)")
+    st.info("Pilih Topik di kiri. Jika Gemini error, coba ganti model di dropdown Sidebar.")
 
 # EMPAT TAB SAKTI
 tab_belajar, tab_video, tab_gambar, tab_kuis = st.tabs(["📚 Materi & Diagram", "🎬 Video AI", "🎨 Ilustrasi AI", "📝 Kuis"])
@@ -220,7 +235,9 @@ with tab_belajar:
                     Kode diagram dalam blok ```mermaid ... ```.
                     """
                     full = ask_the_brain(provider, model_name, api_key, p)
-                    if "ERROR" in full: st.error(full)
+                    
+                    if "ERROR" in full or "⛔" in full: 
+                        st.error(full)
                     else:
                         mm = extract_mermaid_code(full)
                         if mm:
@@ -258,7 +275,7 @@ with tab_gambar:
     col_input, col_style = st.columns([3, 1])
     with col_input:
         default_prompt = f"Illustration of {pilihan_bab} in {st.session_state.topik_saat_ini}, educational style, detailed, 8k" if pilihan_bab else "A cute robot teacher"
-        prompt_gambar = st.text_input("Prompt Gambar (Inggris lebih baik):", value=default_prompt)
+        prompt_gambar = st.text_input("Prompt Gambar:", value=default_prompt)
     with col_style:
         gaya_gambar = st.selectbox("Gaya:", ["flux", "turbo", "midjourney", "anime", "3d-model"])
 
@@ -268,7 +285,7 @@ with tab_gambar:
             if img:
                 st.session_state.last_image = img
                 st.success("Jadi!")
-            else: st.error("Gagal.")
+            else: st.warning("Gagal. Coba lagi.")
 
     if st.session_state.last_image:
         st.image(st.session_state.last_image, caption="Hasil Generasi AI", use_container_width=True)
