@@ -41,7 +41,6 @@ def ask_the_brain(provider, model_name, api_key, prompt):
     try:
         if provider == "Google Gemini":
             genai.configure(api_key=api_key)
-            # Pastikan nama model bersih
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt)
             return response.text
@@ -141,39 +140,40 @@ with st.sidebar:
     api_key = ""
     model_name = ""
 
-    # --- UPDATE DAFTAR MODEL SESUAI LOG KAMU ---
     if provider == "Google Gemini":
-        st.caption("🚀 Menggunakan Model Terbaru (Bleeding Edge)")
-        # Saya pilihkan yang paling relevan untuk Chat & Text Generation
+        st.caption("Support Model Terbaru (v2.5)")
         model_name = st.selectbox("Model:", [
-            "gemini-2.5-flash",        # Super Cepat & Baru
-            "gemini-2.5-pro",          # Paling Pintar
-            "gemini-2.0-flash",        # Standar Baru
-            "gemini-3-pro-preview",    # Masa Depan (Eksperimental)
-            "gemini-flash-latest",     # Selalu update otomatis
-            "gemini-pro-latest"
+            "gemini-2.5-flash",
+            "gemini-2.5-pro", 
+            "gemini-2.0-flash",
+            "gemini-flash-latest"
         ])
-        
         if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]; st.success("API Key Ready.")
         else: api_key = st.text_input("Gemini Key:", type="password")
 
     elif provider == "Groq (Super Cepat)":
-        model_name = st.selectbox("Model:", ["llama3-70b-8192", "mixtral-8x7b-32768", "llama3-8b-8192"])
+        st.caption("Update: Menggunakan Llama 3.3 & 3.1")
+        # --- PERBAIKAN DI SINI: NAMA MODEL BARU ---
+        model_name = st.selectbox("Model:", [
+            "llama-3.3-70b-versatile", # Paling Cerdas & Baru
+            "llama-3.1-8b-instant",    # Paling Cepat (Pengganti yang lama)
+            "mixtral-8x7b-32768"       # Alternatif Stabil
+        ])
         if "GROQ_API_KEY" in st.secrets: api_key = st.secrets["GROQ_API_KEY"]; st.success("API Key Ready.")
         else: api_key = st.text_input("Groq Key:", type="password")
 
     st.markdown("---")
     st.header("🎛️ Kontrol Belajar")
     with st.container(border=True):
-        topik_input = st.text_input("Topik:", placeholder="Cth: Teknologi Nano")
+        topik_input = st.text_input("Topik:", placeholder="Cth: Lubang Hitam")
         gaya_belajar = st.selectbox("Gaya:", ["👶 Pemula", "💡 Visual", "🏫 Akademis", "🚀 Praktis"])
         
         with st.expander("ℹ️ Bedanya apa?", expanded=False):
             st.markdown("""
-            **👶 Pemula (ELI5):** Penjelasan super simpel.
-            **💡 Visual (Analogi):** Banyak perumpamaan.
-            **🏫 Akademis (Kuliah):** Formal & Teoritis.
-            **🚀 Praktis (To-the-point):** Langsung penerapan.
+            **👶 Pemula:** Simpel, bahasa anak-anak.
+            **💡 Visual:** Banyak analogi.
+            **🏫 Akademis:** Formal & detail.
+            **🚀 Praktis:** Langsung ke inti penerapan.
             """)
 
         if st.button("Buat Kurikulum"):
@@ -198,10 +198,10 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v18)")
-    st.info("Pilih Topik di kiri. Support Gemini 2.5 & 3.0 Preview!")
+    st.title("🎓 Guru Saku Ultimate (v19)")
+    st.info("Pilih Topik di kiri. Groq sudah diperbarui ke versi Llama 3.3!")
 
-# TABS
+# EMPAT TAB SAKTI
 tab_belajar, tab_video, tab_gambar, tab_kuis = st.tabs(["📚 Materi & Diagram", "🎬 Video AI", "🎨 Ilustrasi AI", "📝 Kuis"])
 
 # === TAB 1: MATERI ===
