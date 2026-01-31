@@ -21,7 +21,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Custom CSS untuk tampilan interaktif yang lebih cantik
 st.markdown("""
 <style>
     html, body, [class*="css"] { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
@@ -31,31 +31,26 @@ st.markdown("""
     }
     .stButton>button:hover { background-color: #004B91; transform: scale(1.02); }
     .stSelectbox, .stTextInput { margin-bottom: 15px; }
-    .graphviz-box {
-        border: 1px solid #ddd;
+    
+    /* Styling Expander agar terlihat seperti kartu materi */
+    .streamlit-expanderHeader {
+        background-color: #f0f2f6;
         border-radius: 10px;
-        padding: 10px;
-        background-color: white;
-        margin-bottom: 20px;
+        font-weight: bold;
+        color: #0068C9;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ⚙️ FUNGSI BEDAH KODE (THE SURGEON)
+# ⚙️ FUNGSI BEDAH KODE (GRAPHVIZ)
 # ==========================================
 def bersihkan_kode_dot(text):
-    """
-    Mengambil kode digraph G { ... } dari respon AI dengan presisi tinggi.
-    """
     start_index = text.find("digraph")
-    if start_index == -1:
-        return None 
-
+    if start_index == -1: return None 
     balance = 0
     found_first_brace = False
     end_index = -1
-
     for i in range(start_index, len(text)):
         char = text[i]
         if char == '{':
@@ -63,15 +58,11 @@ def bersihkan_kode_dot(text):
             found_first_brace = True
         elif char == '}':
             balance -= 1
-        
         if found_first_brace and balance == 0:
             end_index = i + 1
             break
-    
-    if end_index != -1:
-        return text[start_index:end_index]
-    else:
-        return None
+    if end_index != -1: return text[start_index:end_index]
+    else: return None
 
 # ==========================================
 # 🧠 MESIN KECERDASAN (AI BRAIN)
@@ -128,6 +119,28 @@ def get_clean_image_url(prompt, style_model):
     encoded_prompt = urllib.parse.quote(safe_prompt)
     seed = random.randint(1, 999999)
     return f"https://pollinations.ai/p/{encoded_prompt}?width=1024&height=768&seed={seed}&model={style_model}&nologo=true"
+
+# Fungsi Rendering Interaktif
+def render_interactive_content(text):
+    """
+    Memecah teks Markdown berdasarkan Heading 2 (##) menjadi Expander Interaktif.
+    """
+    # Pisahkan berdasarkan heading ##
+    sections = re.split(r'(^##\s+.*)', text, flags=re.MULTILINE)
+    
+    # Bagian pertama (intro) sebelum ## pertama
+    if sections[0].strip():
+        st.markdown(sections[0])
+    
+    # Loop sisanya (Judul -> Isi)
+    for i in range(1, len(sections), 2):
+        if i + 1 < len(sections):
+            title = sections[i].replace("##", "").strip()
+            content = sections[i+1].strip()
+            
+            # Buat Expander (Kotak yang bisa diklik)
+            with st.expander(f"👉 {title}"):
+                st.markdown(content)
 
 # ==========================================
 # 🔒 LOGIN & STATE
@@ -224,8 +237,8 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v36)")
-    st.info("Fitur Diagram Graphviz dikembalikan & muncul di akhir!")
+    st.title("🎓 Guru Saku AI Ultimate (v37)")
+    st.info("Mode Interaktif Aktif! Materi bisa diklik untuk dibuka/tutup.")
 
 # --- 4 TAB OUTPUT ---
 tab_belajar, tab_video, tab_gambar, tab_kuis = st.tabs(["📚 Materi & Diagram", "🎬 Video AI", "🎨 Ilustrasi AI", "📝 Kuis"])
@@ -239,18 +252,21 @@ with tab_belajar:
         if st.button("✨ Buka Materi"):
             if not api_key: st.error("API Key kosong.")
             else:
-                with st.spinner("Menulis & Menggambar Diagram (Graphviz)..."):
+                with st.spinner("Menulis materi interaktif & Diagram..."):
+                    # PROMPT KHUSUS INTERAKTIF
                     p = f"""
                     Saya belajar '{st.session_state.topik_saat_ini}', Bab '{pilihan_bab}'.
                     Gaya: {gaya_belajar}.
                     
-                    Tugas 1: Jelaskan materi lengkap (Markdown).
+                    TUGAS 1: Jelaskan materi secara lengkap dan terstruktur.
+                    PENTING: Gunakan Heading 2 Markdown (##) untuk memisahkan setiap Sub-Topik utama.
+                    Saya akan menggunakan tanda '##' untuk membuat menu interaktif (Accordion).
+                    Jangan gunakan Heading 1 (#).
                     
-                    Tugas 2: Buat DIAGRAM Peta Konsep (Graphviz DOT).
+                    TUGAS 2: Buat DIAGRAM Peta Konsep (Graphviz DOT).
                     - Gunakan `digraph G {{ ... }}`.
                     - Node style: `node [style="filled", fillcolor="lightblue", shape="box", fontname="Arial"]`.
-                    - Rankdir: LR (Kiri ke Kanan).
-                    - Pastikan kodenya valid.
+                    - Rankdir: LR.
                     """
                     full = ask_the_brain(provider, model_name, api_key, p)
                     
@@ -260,6 +276,7 @@ with tab_belajar:
                         kode_dot = bersihkan_kode_dot(full)
                         if kode_dot:
                             st.session_state.diagram_code = kode_dot
+                            # Hapus diagram dari teks agar bersih
                             idx = full.find("digraph")
                             st.session_state.materi_sekarang = full[:idx].strip()
                         else:
@@ -268,34 +285,35 @@ with tab_belajar:
                             
                         st.session_state.quiz_data = None; st.session_state.audio_path = None
         
-        # --- POSISI 1: DIAGRAM DI ATAS (PREVIEW) ---
+        # --- 1. DIAGRAM DI ATAS (PREVIEW) ---
         if st.session_state.diagram_code:
             st.markdown("### 🧩 Peta Konsep (Awal)")
-            st.caption("💡 Tips: Hover mouse di atas diagram lalu klik tombol 'Fullscreen' (tanda panah dua arah) yang muncul di pojok kanan atas diagram untuk **Zoom In/Out**.")
+            st.caption("Klik 'Fullscreen' di pojok diagram untuk Zoom.")
             try:
                 st.graphviz_chart(st.session_state.diagram_code, use_container_width=True)
             except Exception as e:
                 st.error("Gagal merender diagram.")
 
-        # --- MATERI ---
+        # --- 2. MATERI INTERAKTIF ---
         if st.session_state.materi_sekarang:
             st.markdown("---")
-            st.markdown(st.session_state.materi_sekarang)
+            # PANGGIL FUNGSI RENDER INTERAKTIF
+            render_interactive_content(st.session_state.materi_sekarang)
 
-        # --- POSISI 2: DIAGRAM DI AKHIR (REVIEW) ---
+        # --- 3. DIAGRAM DI AKHIR (REVIEW) ---
         if st.session_state.diagram_code:
             st.markdown("---")
-            st.markdown("### 🔄 Ringkasan Visual (Akhir)")
-            try:
+            with st.expander("🔄 Lihat Ringkasan Visual (Diagram)"):
                 st.graphviz_chart(st.session_state.diagram_code, use_container_width=True)
-            except: pass
 
 # === TAB 2: VIDEO ===
 with tab_video:
     st.header("🎬 Studio Video")
     if st.session_state.materi_sekarang:
         if st.button("🎙️ Buat Suara Guru"):
-            aud = generate_audio(st.session_state.materi_sekarang[:1000])
+            # Bersihkan markdown syntax untuk audio agar tidak terdengar aneh
+            clean_text = st.session_state.materi_sekarang.replace("#", "").replace("*", "")
+            aud = generate_audio(clean_text[:1000]) # Batasi 1000 karakter
             if aud: st.session_state.audio_path = aud; st.success("Selesai!")
         
         if st.session_state.audio_path:
