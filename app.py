@@ -41,6 +41,7 @@ def ask_the_brain(provider, model_name, api_key, prompt):
     try:
         if provider == "Google Gemini":
             genai.configure(api_key=api_key)
+            # Setting safety ke BLOCK_NONE agar materi biologi/sejarah tidak kena sensor
             safety_settings = [
                 {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
                 {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -66,9 +67,9 @@ def ask_the_brain(provider, model_name, api_key, prompt):
     except Exception as e:
         error_msg = str(e)
         if "404" in error_msg:
-            return f"⛔ **MODEL TIDAK DITEMUKAN (404)**\n\nModel `{model_name}` bermasalah. Coba ganti ke `gemini-1.5-flash` di menu kiri."
+            return f"⛔ **MODEL ERROR (404)**\n\nModel `{model_name}` tidak ditemukan. Silakan ganti ke `gemini-1.5-flash` di menu kiri."
         elif "429" in error_msg:
-            return "⛔ **KUOTA GEMINI HABIS (Limit 429)**\n\nGoogle membatasi kecepatanmu (5 request/menit). \n👉 **Solusi:** Tunggu 1 menit, atau pindah ke **Groq**."
+            return "⛔ **KUOTA HABIS (Limit 429)**\n\nGoogle Gemini sedang 'ngos-ngosan'. \n👉 **Solusi:** Tunggu 1 menit, atau ganti Otak ke **Groq**."
         else:
             return f"⚠️ ERROR {provider}: {error_msg}"
 
@@ -110,7 +111,7 @@ def generate_audio(text):
 def get_image_url(prompt, style_model):
     clean_prompt = urllib.parse.quote(prompt)
     seed = random.randint(1, 1000000)
-    # Kita gunakan URL langsung
+    # Endpoint Pollinations Image
     return f"[https://image.pollinations.ai/prompt/](https://image.pollinations.ai/prompt/){clean_prompt}?model={style_model}&seed={seed}&width=1024&height=768&nologo=true"
 
 # ==========================================
@@ -150,7 +151,7 @@ with st.sidebar:
     model_name = ""
 
     if provider == "Google Gemini":
-        st.caption("Model (Pilih 1.5 jika 2.5 Error):")
+        st.caption("Pilih 1.5 jika 2.5 Error:")
         model_name = st.selectbox("Versi:", [
             "gemini-2.5-flash", 
             "gemini-2.0-flash", 
@@ -172,13 +173,13 @@ with st.sidebar:
     st.markdown("---")
     st.header("🎛️ Kontrol Belajar")
     with st.container(border=True):
-        topik_input = st.text_input("Topik:", placeholder="Cth: Fotosintesis")
+        topik_input = st.text_input("Topik:", placeholder="Cth: Dinosaurus")
         gaya_belajar = st.selectbox("Gaya:", ["👶 Pemula", "💡 Visual", "🏫 Akademis", "🚀 Praktis"])
         
         with st.expander("ℹ️ Penjelasan 4 Gaya Belajar", expanded=False):
             st.markdown("""
-            1. **👶 Pemula (ELI5):** Bahasa simpel untuk pemula.
-            2. **💡 Visual (Analogi):** Banyak perumpamaan.
+            1. **👶 Pemula:** Penjelasan sangat simpel.
+            2. **💡 Visual:** Banyak analogi/perumpamaan.
             3. **🏫 Akademis:** Formal dan detail.
             4. **🚀 Praktis:** To-the-point dan aplikatif.
             """)
@@ -207,8 +208,8 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v26 - Fixed)")
-    st.info("Masalah Gambar (Error 532) sudah diperbaiki dengan HTML Injection.")
+    st.title("🎓 Guru Saku Ultimate (v27)")
+    st.info("Fitur Gambar sudah dilengkapi Mode Anti-Blokir.")
 
 # --- 4 TAB OUTPUT ---
 tab_belajar, tab_video, tab_gambar, tab_kuis = st.tabs(["📚 Materi & Diagram", "🎬 Video AI", "🎨 Ilustrasi AI", "📝 Kuis"])
@@ -248,6 +249,7 @@ with tab_belajar:
 # === TAB 2: VIDEO ===
 with tab_video:
     st.header("🎬 Studio Video")
+    st.write("Dengarkan materi sambil melihat diagram konsep.")
     if st.session_state.materi_sekarang:
         if st.button("🎙️ Buat Suara Guru"):
             aud = generate_audio(st.session_state.materi_sekarang[:1000])
@@ -259,9 +261,9 @@ with tab_video:
             with c2: 
                 st.info("🖼️ Lihat")
                 if st.session_state.mermaid_code: render_mermaid(st.session_state.mermaid_code)
-    else: st.warning("Buka materi di Tab 1 dulu.")
+    else: st.warning("Silakan Buka Materi di Tab 1 terlebih dahulu.")
 
-# === TAB 3: GAMBAR (FIX HTML INJECTION) ===
+# === TAB 3: GAMBAR (ANTI-HOTLINK & BACKUP LINK) ===
 with tab_gambar:
     st.header("🎨 Ilustrasi AI (Gratis)")
     st.write("Visualisasikan materi ini dengan gambar HD.")
@@ -276,27 +278,31 @@ with tab_gambar:
     if st.button("🖌️ Lukis Sekarang"):
         url_gambar = get_image_url(prompt_gambar, gaya_gambar)
         st.session_state.current_image_url = url_gambar
-        st.success("Gambar berhasil digenerate! Jika tidak muncul, tunggu beberapa detik.")
+        st.success("Gambar berhasil digenerate! Jika tidak muncul di bawah, klik link biru.")
 
     if st.session_state.current_image_url:
-        # PERBAIKAN DI SINI: Gunakan HTML Murni, bukan st.image()
-        # Ini memaksa Browser kamu yang ambil gambarnya, bukan Server Streamlit.
+        # TRIK: referrerpolicy="no-referrer" menyembunyikan identitas Streamlit
         st.markdown(f'''
-            <div style="display: flex; justify-content: center;">
-                <img src="{st.session_state.current_image_url}" alt="Generated Image" style="max-width: 100%; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+            <div style="display: flex; justify-content: center; flex-direction: column; align-items: center;">
+                <img src="{st.session_state.current_image_url}" 
+                     alt="Sedang memuat gambar..." 
+                     style="max-width: 100%; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 10px;"
+                     referrerpolicy="no-referrer">
+                
+                <p style="text-align: center; color: #666; font-size: 0.9em; background-color: #f0f2f6; padding: 10px; border-radius: 5px;">
+                    ⚠️ Gambar tidak muncul? 
+                    <a href="{st.session_state.current_image_url}" target="_blank" style="text-decoration: none; color: #0068C9; font-weight: bold;">
+                        👉 KLIK DI SINI UNTUK MEMBUKA GAMBAR (TAB BARU)
+                    </a>
+                </p>
+                
+                <a href="{st.session_state.current_image_url}" download="guru_saku_img.jpg" target="_blank">
+                    <button style="background-color:#4CAF50; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer; font-weight:bold; margin-top: 5px;">
+                        ⬇️ Download Gambar
+                    </button>
+                </a>
             </div>
         ''', unsafe_allow_html=True)
-        
-        st.markdown(f"""
-        <br>
-        <div style="text-align: center;">
-            <a href="{st.session_state.current_image_url}" download="guru_saku_img.jpg" target="_blank">
-                <button style="background-color:#4CAF50; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">
-                    ⬇️ Download Gambar (Klik Kanan > Save Image)
-                </button>
-            </a>
-        </div>
-        """, unsafe_allow_html=True)
 
 # === TAB 4: KUIS ===
 with tab_kuis:
