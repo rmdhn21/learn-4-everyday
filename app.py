@@ -31,6 +31,14 @@ st.markdown("""
     }
     .stButton>button:hover { background-color: #004B91; transform: scale(1.02); }
     .stSelectbox, .stTextInput { margin-bottom: 15px; }
+    /* Box Peta Konsep */
+    .peta-konsep {
+        background-color: #f0f2f6;
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 5px solid #0068C9;
+        margin-bottom: 20px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -47,8 +55,7 @@ def ask_the_brain(provider, model_name, api_key, prompt):
                 {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
-            # Jeda agar tidak spam limit
-            time.sleep(2) 
+            time.sleep(1) # Jeda anti-spam
             model = genai.GenerativeModel(model_name, safety_settings=safety_settings)
             response = model.generate_content(prompt)
             return response.text
@@ -70,45 +77,13 @@ def ask_the_brain(provider, model_name, api_key, prompt):
         if "404" in error_msg:
             return f"⛔ **MODEL ERROR (404)**\n\nModel `{model_name}` bermasalah. Coba ganti ke `gemini-2.0-flash`."
         elif "429" in error_msg:
-            return "⛔ **KUOTA HABIS (Limit 429)**\n\nGoogle Gemini 2.5 membatasi 5 request/menit. \n👉 **Solusi:** Tunggu sebentar atau pakai **Groq**."
+            return "⛔ **KUOTA HABIS (Limit 429)**\n\nGoogle Gemini 2.5 membatasi kecepatan. \n👉 **Solusi:** Tunggu 1 menit atau pakai **Groq**."
         else:
             return f"⚠️ ERROR {provider}: {error_msg}"
 
 # ==========================================
 # ⚙️ FUNGSI PENDUKUNG
 # ==========================================
-def render_mermaid(code):
-    # Membersihkan kode mermaid dari karakter yang bikin error syntax
-    code = code.replace("(", "").replace(")", "").replace("[", "").replace("]", "")
-    
-    html_code = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
-        <script>mermaid.initialize({{startOnLoad:true, theme:'base', securityLevel:'loose'}});</script>
-        <style>body{{background:white; font-family: sans-serif;}} #diagram{{display:flex;justify-content:center;}}</style>
-    </head>
-    <body>
-        <div class="mermaid" id="diagram">
-            graph TD
-            {code}
-        </div>
-    </body>
-    </html>
-    """
-    components.html(html_code, height=450, scrolling=True)
-
-def extract_mermaid_code(text):
-    # Mencoba menangkap isi mermaid
-    match = re.search(r'```mermaid(.*?)```', text, re.DOTALL)
-    if match: 
-        code = match.group(1).strip()
-        # Hapus header graph TD jika ada, karena kita inject manual biar aman
-        code = code.replace("graph TD", "").replace("graph LR", "").strip()
-        return code
-    return None
-
 def generate_audio(text):
     try:
         tts = gTTS(text=text, lang='id')
@@ -117,13 +92,12 @@ def generate_audio(text):
             return fp.name
     except: return None
 
-# --- FUNGSI URL GAMBAR CLEAN ---
+# --- FUNGSI URL GAMBAR ---
 def get_clean_image_url(prompt, style_model):
-    # Hanya ambil huruf dan angka untuk prompt URL (Hapus simbol aneh)
     safe_prompt = re.sub(r'[^a-zA-Z0-9 ]', '', prompt)
     encoded_prompt = urllib.parse.quote(safe_prompt)
     seed = random.randint(1, 999999)
-    # Gunakan 'flux' (paling stabil)
+    # Default flux
     return f"https://pollinations.ai/p/{encoded_prompt}?width=1024&height=768&seed={seed}&model={style_model}&nologo=true"
 
 # ==========================================
@@ -147,7 +121,8 @@ if not st.session_state.is_logged_in:
 # Init State
 for k, v in {
     'kurikulum':[], 'materi_sekarang':"", 'quiz_data':None, 
-    'mermaid_code':"", 'topik_saat_ini':"", 'audio_path':None,
+    'peta_konsep_teks':"", # Ganti Mermaid jadi Teks Biasa
+    'topik_saat_ini':"", 'audio_path':None,
     'current_image_url': None 
 }.items():
     if k not in st.session_state: st.session_state[k] = v
@@ -208,7 +183,7 @@ with st.sidebar:
                         st.error(res) 
                     else:
                         st.session_state.kurikulum = [l.strip().lstrip('1234567890.-* ') for l in res.split('\n') if l.strip()][:5]
-                        st.session_state.materi_sekarang = ""; st.session_state.mermaid_code = ""; st.session_state.quiz_data = None; st.session_state.current_image_url = None
+                        st.session_state.materi_sekarang = ""; st.session_state.peta_konsep_teks = ""; st.session_state.quiz_data = None; st.session_state.current_image_url = None
                         st.toast("Siap!")
 
     if st.session_state.kurikulum:
@@ -220,8 +195,8 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v33)")
-    st.info("Perbaikan: Diagram Mermaid disederhanakan agar tidak Syntax Error.")
+    st.title("🎓 Guru Saku Ultimate (v34)")
+    st.info("Kembali ke Peta Konsep Teks (Stabil & Anti Error).")
 
 # --- 4 TAB OUTPUT ---
 tab_belajar, tab_video, tab_gambar, tab_kuis = st.tabs(["📚 Materi & Diagram", "🎬 Video AI", "🎨 Ilustrasi AI", "📝 Kuis"])
@@ -235,33 +210,46 @@ with tab_belajar:
         if st.button("✨ Buka Materi"):
             if not api_key: st.error("API Key kosong.")
             else:
-                with st.spinner("Menulis & Menggambar Diagram..."):
-                    # Prompt Diperketat untuk Diagram
+                with st.spinner("Menulis & Membuat Peta Konsep..."):
+                    # Prompt TANPA Mermaid, ganti ke List Hierarki
                     p = f"""
                     Jelaskan '{pilihan_bab}' dengan gaya {gaya_belajar}.
                     
-                    INSTRUKSI KHUSUS DIAGRAM:
-                    1. Buat kode Mermaid JS 'graph TD'.
-                    2. JANGAN GUNAKAN TANDA KURUNG '()' ATAU '[]' DI DALAM TEKS NODE.
-                    3. Gunakan hanya huruf dan angka sederhana.
-                    4. Kode diagram dalam blok ```mermaid ... ```.
+                    SETELAH PENJELASAN, BUAT 'PETA KONSEP' DALAM BENTUK LIST HIERARKI (Bullet Points).
+                    Format Peta Konsep:
+                    ### 🌳 Peta Konsep
+                    * Topik Utama
+                        * Sub-topik 1
+                            * Detail A
+                        * Sub-topik 2
+                    
+                    Pisahkan Materi dan Peta Konsep dengan jelas.
                     """
                     full = ask_the_brain(provider, model_name, api_key, p)
                     
                     if "⛔" in full or "⚠️" in full: 
                         st.error(full)
                     else:
-                        mm = extract_mermaid_code(full)
-                        if mm:
-                            st.session_state.mermaid_code = mm
-                            st.session_state.materi_sekarang = full.replace(f"```mermaid\n{mm}\n```", "").replace(mm, "").strip()
-                        else: st.session_state.mermaid_code = ""; st.session_state.materi_sekarang = full
+                        # Kita pisahkan manual (Simple Split)
+                        if "### 🌳 Peta Konsep" in full:
+                            parts = full.split("### 🌳 Peta Konsep")
+                            st.session_state.materi_sekarang = parts[0].strip()
+                            st.session_state.peta_konsep_teks = "### 🌳 Peta Konsep" + parts[1]
+                        else:
+                            st.session_state.materi_sekarang = full
+                            st.session_state.peta_konsep_teks = "⚠️ Peta konsep tidak tergenerate otomatis."
+                        
                         st.session_state.quiz_data = None; st.session_state.audio_path = None
         
+        # TAMPILKAN HASIL
+        if st.session_state.peta_konsep_teks:
+            st.markdown('<div class="peta-konsep">', unsafe_allow_html=True)
+            st.markdown(st.session_state.peta_konsep_teks)
+            st.markdown('</div>', unsafe_allow_html=True)
+            
         if st.session_state.materi_sekarang:
-            if st.session_state.mermaid_code:
-                st.markdown("### 🧩 Peta Konsep"); render_mermaid(st.session_state.mermaid_code)
-            st.markdown("---"); st.markdown(st.session_state.materi_sekarang)
+            st.markdown("---")
+            st.markdown(st.session_state.materi_sekarang)
 
 # === TAB 2: VIDEO ===
 with tab_video:
@@ -275,11 +263,11 @@ with tab_video:
             c1, c2 = st.columns(2)
             with c1: st.info("🔊 Dengar"); st.audio(st.session_state.audio_path)
             with c2: 
-                st.info("🖼️ Lihat")
-                if st.session_state.mermaid_code: render_mermaid(st.session_state.mermaid_code)
+                st.info("🖼️ Lihat Struktur")
+                st.markdown(st.session_state.peta_konsep_teks)
     else: st.warning("Buka materi di Tab 1 dulu.")
 
-# === TAB 3: GAMBAR (CLIENT SIDE) ===
+# === TAB 3: GAMBAR (HTML CLIENT SIDE) ===
 with tab_gambar:
     st.header("🎨 Ilustrasi AI (Gratis)")
     
@@ -291,13 +279,11 @@ with tab_gambar:
         gaya_gambar = st.selectbox("Gaya:", ["flux", "turbo", "midjourney", "anime", "3d-model"])
 
     if st.button("🖌️ Lukis Sekarang"):
-        # Hasilkan URL
         url_gambar = get_clean_image_url(prompt_gambar, gaya_gambar)
         st.session_state.current_image_url = url_gambar
-        st.success("Memuat gambar dari server...")
+        st.success("Memuat gambar...")
 
     if st.session_state.current_image_url:
-        # Tampilkan HTML Murni
         st.markdown(f'''
             <div style="text-align: center;">
                 <img src="{st.session_state.current_image_url}" style="max-width: 100%; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
