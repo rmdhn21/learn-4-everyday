@@ -12,6 +12,7 @@ from io import BytesIO
 import random
 import urllib.parse
 import time
+import base64
 
 # --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(
@@ -41,6 +42,7 @@ def ask_the_brain(provider, model_name, api_key, prompt):
     try:
         if provider == "Google Gemini":
             genai.configure(api_key=api_key)
+            # Safety Settings Longgar
             safety_settings = [
                 {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
                 {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -66,9 +68,9 @@ def ask_the_brain(provider, model_name, api_key, prompt):
     except Exception as e:
         error_msg = str(e)
         if "404" in error_msg:
-            return f"⛔ **MODEL TIDAK DITEMUKAN (404)**\n\nModel `{model_name}` sedang bermasalah. Coba ganti ke `gemini-1.5-flash` di menu kiri."
+            return f"⛔ **MODEL TIDAK DITEMUKAN (404)**\n\nModel `{model_name}` sedang bermasalah. Coba ganti ke `gemini-2.0-flash` di menu kiri."
         elif "429" in error_msg:
-            return "⛔ **KUOTA GEMINI HABIS (Limit 429)**\n\nGoogle membatasi kecepatanmu. \n👉 **Solusi:** Tunggu 1 menit, atau pindah ke **Groq**."
+            return "⛔ **KUOTA GEMINI HABIS (Limit 429)**\n\nAnda terlalu cepat! Google memblokir sementara. \n👉 **Solusi:** Tunggu 1 menit, atau pindah ke **Groq**."
         else:
             return f"⚠️ ERROR {provider}: {error_msg}"
 
@@ -106,14 +108,26 @@ def generate_audio(text):
             return fp.name
     except: return None
 
-# --- FUNGSI URL GAMBAR BERSIH ---
-def get_clean_image_url(prompt, style_model):
-    # Membersihkan prompt dari karakter aneh
-    safe_prompt = re.sub(r'[^a-zA-Z0-9 ]', '', prompt)
-    encoded_prompt = urllib.parse.quote(safe_prompt)
-    seed = random.randint(1, 999999)
-    # Kita gunakan parameter minimal agar link tidak rusak
-    return f"[https://pollinations.ai/p/](https://pollinations.ai/p/){encoded_prompt}?width=1024&height=768&seed={seed}&model={style_model}&nologo=true"
+# --- FUNGSI GAMBAR (BASE64 EMBEDDING - ANTI BLOKIR) ---
+def get_image_base64(prompt, style_model):
+    try:
+        clean_prompt = urllib.parse.quote(prompt.strip())
+        seed = random.randint(1, 999999)
+        url = f"[https://pollinations.ai/p/](https://pollinations.ai/p/){clean_prompt}?width=1024&height=768&seed={seed}&model={style_model}&nologo=true"
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
+        response = requests.get(url, headers=headers, timeout=20)
+        
+        if response.status_code == 200:
+            img_b64 = base64.b64encode(response.content).decode()
+            return f"data:image/png;base64,{img_b64}"
+        else:
+            return None
+    except:
+        return None
 
 # ==========================================
 # 🔒 LOGIN & STATE
@@ -137,7 +151,7 @@ if not st.session_state.is_logged_in:
 for k, v in {
     'kurikulum':[], 'materi_sekarang':"", 'quiz_data':None, 
     'mermaid_code':"", 'topik_saat_ini':"", 'audio_path':None,
-    'current_image_url': None 
+    'current_image_b64': None 
 }.items():
     if k not in st.session_state: st.session_state[k] = v
 
@@ -152,11 +166,13 @@ with st.sidebar:
     model_name = ""
 
     if provider == "Google Gemini":
-        st.caption("Pilih 1.5 jika 2.5 Error:")
+        st.caption("Versi Terbaru (Tanpa 1.5):")
+        # --- UPDATE LIST MODEL (1.5 SUDAH DIHAPUS) ---
         model_name = st.selectbox("Versi:", [
             "gemini-2.5-flash", 
-            "gemini-2.0-flash", 
-            "gemini-1.5-flash"
+            "gemini-2.5-pro",
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-exp"
         ])
         if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]; st.caption("✅ API Key Ready")
         else: api_key = st.text_input("Gemini Key:", type="password")
@@ -179,10 +195,10 @@ with st.sidebar:
         
         with st.expander("ℹ️ Penjelasan 4 Gaya Belajar", expanded=False):
             st.markdown("""
-            1. **👶 Pemula:** Penjelasan sangat simpel.
-            2. **💡 Visual:** Banyak analogi/perumpamaan.
+            1. **👶 Pemula:** Penjelasan simpel.
+            2. **💡 Visual:** Banyak analogi.
             3. **🏫 Akademis:** Formal dan detail.
-            4. **🚀 Praktis:** To-the-point dan aplikatif.
+            4. **🚀 Praktis:** To-the-point.
             """)
 
         if st.button("Buat Kurikulum"):
@@ -197,7 +213,7 @@ with st.sidebar:
                         st.error(res) 
                     else:
                         st.session_state.kurikulum = [l.strip().lstrip('1234567890.-* ') for l in res.split('\n') if l.strip()][:5]
-                        st.session_state.materi_sekarang = ""; st.session_state.mermaid_code = ""; st.session_state.quiz_data = None; st.session_state.current_image_url = None
+                        st.session_state.materi_sekarang = ""; st.session_state.mermaid_code = ""; st.session_state.quiz_data = None; st.session_state.current_image_b64 = None
                         st.toast("Siap!")
 
     if st.session_state.kurikulum:
@@ -209,8 +225,8 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v29)")
-    st.info("Fitur Gambar menggunakan Iframe Sandbox (Anti Error).")
+    st.title("🎓 Guru Saku Ultimate (v31)")
+    st.info("Gemini 1.5 telah dihapus. Menggunakan Gemini 2.5 & 2.0.")
 
 # --- 4 TAB OUTPUT ---
 tab_belajar, tab_video, tab_gambar, tab_kuis = st.tabs(["📚 Materi & Diagram", "🎬 Video AI", "🎨 Ilustrasi AI", "📝 Kuis"])
@@ -219,7 +235,7 @@ tab_belajar, tab_video, tab_gambar, tab_kuis = st.tabs(["📚 Materi & Diagram",
 with tab_belajar:
     if st.session_state.kurikulum and pilihan_bab:
         st.header(f"🎓 {st.session_state.topik_saat_ini}")
-        st.caption(f"Bab: {pilihan_bab} | Guru: {model_name} | Gaya: {gaya_belajar}")
+        st.caption(f"Bab: {pilihan_bab} | Guru: {model_name}")
         
         if st.button("✨ Buka Materi"):
             if not api_key: st.error("API Key kosong.")
@@ -250,6 +266,7 @@ with tab_belajar:
 # === TAB 2: VIDEO ===
 with tab_video:
     st.header("🎬 Studio Video")
+    st.write("Dengarkan materi sambil melihat diagram konsep.")
     if st.session_state.materi_sekarang:
         if st.button("🎙️ Buat Suara Guru"):
             aud = generate_audio(st.session_state.materi_sekarang[:1000])
@@ -263,7 +280,7 @@ with tab_video:
                 if st.session_state.mermaid_code: render_mermaid(st.session_state.mermaid_code)
     else: st.warning("Buka materi di Tab 1 dulu.")
 
-# === TAB 3: GAMBAR (IFRAME SANDBOX) ===
+# === TAB 3: GAMBAR (BASE64) ===
 with tab_gambar:
     st.header("🎨 Ilustrasi AI (Gratis)")
     
@@ -275,30 +292,28 @@ with tab_gambar:
         gaya_gambar = st.selectbox("Gaya:", ["flux", "midjourney", "anime", "3d-model"])
 
     if st.button("🖌️ Lukis Sekarang"):
-        # Bersihkan URL sebersih-bersihnya
-        url_gambar = get_clean_image_url(prompt_gambar, gaya_gambar)
-        st.session_state.current_image_url = url_gambar
-        st.success("Gambar sedang dimuat di bawah...")
+        with st.spinner("Sedang memproses gambar (Server-Side Download)..."):
+            b64_img = get_image_base64(prompt_gambar, gaya_gambar)
+            if b64_img:
+                st.session_state.current_image_b64 = b64_img
+                st.success("Gambar berhasil diproses!")
+            else:
+                st.error("Gagal mendownload gambar. Server Pollinations sibuk.")
 
-    if st.session_state.current_image_url:
-        # TEKNIK BARU: IFRAME SANDBOX
-        # Ini memaksa gambar dimuat di lingkungan terisolasi yang aman dari Streamlit
-        html_content = f"""
-        <div style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
-            <img src="{st.session_state.current_image_url}" 
-                 style="max-width: 100%; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" 
-                 alt="Gambar sedang dibuat oleh AI... Jika lama, berarti server sibuk.">
-            <br>
-            <a href="{st.session_state.current_image_url}" target="_blank" 
-               style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; font-family: sans-serif;">
-               ⬇️ Download / Buka Penuh
-            </a>
-        </div>
-        """
-        # Render HTML dalam Iframe khusus
-        components.html(html_content, height=600, scrolling=True)
-        
-        st.warning("⚠️ **Catatan Penting:** Jika gambar di atas tetap putih/kosong, berarti internet provider Anda (seperti IndiHome/Telkomsel) memblokir situs AI ini (Internet Positif). Silakan gunakan VPN.")
+    if st.session_state.current_image_b64:
+        # TAMPILKAN BASE64 LANGSUNG
+        st.markdown(f'''
+            <div style="display: flex; justify-content: center; flex-direction: column; align-items: center;">
+                <img src="{st.session_state.current_image_b64}" 
+                     style="max-width: 100%; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <br>
+                <a href="{st.session_state.current_image_b64}" download="guru_saku_img.png">
+                    <button style="background-color:#4CAF50; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">
+                        ⬇️ Download Gambar
+                    </button>
+                </a>
+            </div>
+        ''', unsafe_allow_html=True)
 
 # === TAB 4: KUIS ===
 with tab_kuis:
