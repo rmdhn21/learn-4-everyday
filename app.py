@@ -42,7 +42,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ⚙️ FUNGSI BEDAH KODE (DARI KODE LAMA KAMU)
+# ⚙️ FUNGSI BEDAH KODE (THE SURGEON)
 # ==========================================
 def bersihkan_kode_dot(text):
     """
@@ -150,7 +150,7 @@ if not st.session_state.is_logged_in:
 # Init State
 for k, v in {
     'kurikulum':[], 'materi_sekarang':"", 'quiz_data':None, 
-    'diagram_code':"", # INI KEMBALI JADI GRAPHVIZ CODE
+    'diagram_code':"", 
     'topik_saat_ini':"", 'audio_path':None,
     'current_image_url': None 
 }.items():
@@ -224,8 +224,8 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v35)")
-    st.info("Fitur Diagram Graphviz (Peta Konsep) telah dikembalikan!")
+    st.title("🎓 Guru Saku Ultimate (v36)")
+    st.info("Fitur Diagram Graphviz dikembalikan & muncul di akhir!")
 
 # --- 4 TAB OUTPUT ---
 tab_belajar, tab_video, tab_gambar, tab_kuis = st.tabs(["📚 Materi & Diagram", "🎬 Video AI", "🎨 Ilustrasi AI", "📝 Kuis"])
@@ -240,7 +240,6 @@ with tab_belajar:
             if not api_key: st.error("API Key kosong.")
             else:
                 with st.spinner("Menulis & Menggambar Diagram (Graphviz)..."):
-                    # PROMPT KHUSUS GRAPHVIZ (DARI KODE LAMAMU)
                     p = f"""
                     Saya belajar '{st.session_state.topik_saat_ini}', Bab '{pilihan_bab}'.
                     Gaya: {gaya_belajar}.
@@ -258,12 +257,9 @@ with tab_belajar:
                     if "⛔" in full or "⚠️" in full: 
                         st.error(full)
                     else:
-                        # 1. Ambil Kode Diagram pakai fungsi bedah kode
                         kode_dot = bersihkan_kode_dot(full)
-                        
                         if kode_dot:
                             st.session_state.diagram_code = kode_dot
-                            # Hapus kode diagram dari teks materi biar ga dobel
                             idx = full.find("digraph")
                             st.session_state.materi_sekarang = full[:idx].strip()
                         else:
@@ -272,18 +268,27 @@ with tab_belajar:
                             
                         st.session_state.quiz_data = None; st.session_state.audio_path = None
         
-        # RENDER DIAGRAM GRAPHVIZ (YANG MUNCUL DAN BAGUS)
+        # --- POSISI 1: DIAGRAM DI ATAS (PREVIEW) ---
         if st.session_state.diagram_code:
-            st.markdown("### 🧩 Peta Konsep")
+            st.markdown("### 🧩 Peta Konsep (Awal)")
+            st.caption("💡 Tips: Hover mouse di atas diagram lalu klik tombol 'Fullscreen' (tanda panah dua arah) yang muncul di pojok kanan atas diagram untuk **Zoom In/Out**.")
             try:
                 st.graphviz_chart(st.session_state.diagram_code, use_container_width=True)
             except Exception as e:
-                st.error("Gagal merender diagram. Coba lagi.")
-                st.code(st.session_state.diagram_code)
+                st.error("Gagal merender diagram.")
 
+        # --- MATERI ---
         if st.session_state.materi_sekarang:
             st.markdown("---")
             st.markdown(st.session_state.materi_sekarang)
+
+        # --- POSISI 2: DIAGRAM DI AKHIR (REVIEW) ---
+        if st.session_state.diagram_code:
+            st.markdown("---")
+            st.markdown("### 🔄 Ringkasan Visual (Akhir)")
+            try:
+                st.graphviz_chart(st.session_state.diagram_code, use_container_width=True)
+            except: pass
 
 # === TAB 2: VIDEO ===
 with tab_video:
