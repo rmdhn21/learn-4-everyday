@@ -47,8 +47,8 @@ def ask_the_brain(provider, model_name, api_key, prompt):
                 {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
-            # Tambahkan jeda 1 detik untuk menghindari spam request
-            time.sleep(1)
+            # Jeda agar tidak spam limit
+            time.sleep(2) 
             model = genai.GenerativeModel(model_name, safety_settings=safety_settings)
             response = model.generate_content(prompt)
             return response.text
@@ -68,9 +68,9 @@ def ask_the_brain(provider, model_name, api_key, prompt):
     except Exception as e:
         error_msg = str(e)
         if "404" in error_msg:
-            return f"⛔ **MODEL ERROR (404)**\n\nModel `{model_name}` sedang down. Coba pilih 'gemini-2.0-flash' di menu."
+            return f"⛔ **MODEL ERROR (404)**\n\nModel `{model_name}` bermasalah. Coba ganti ke `gemini-2.0-flash`."
         elif "429" in error_msg:
-            return "⛔ **KUOTA HABIS (Limit 429)**\n\nGoogle Gemini 2.5 membatasi kecepatan (5 request/menit). \n⏳ **Tunggu sebentar** atau gunakan **Groq**."
+            return "⛔ **KUOTA HABIS (Limit 429)**\n\nGoogle Gemini 2.5 membatasi 5 request/menit. \n👉 **Solusi:** Tunggu sebentar atau pakai **Groq**."
         else:
             return f"⚠️ ERROR {provider}: {error_msg}"
 
@@ -78,26 +78,35 @@ def ask_the_brain(provider, model_name, api_key, prompt):
 # ⚙️ FUNGSI PENDUKUNG
 # ==========================================
 def render_mermaid(code):
+    # Membersihkan kode mermaid dari karakter yang bikin error syntax
+    code = code.replace("(", "").replace(")", "").replace("[", "").replace("]", "")
+    
     html_code = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
         <script>mermaid.initialize({{startOnLoad:true, theme:'base', securityLevel:'loose'}});</script>
-        <style>body{{background:white;}} #diagram{{display:flex;justify-content:center;}}</style>
+        <style>body{{background:white; font-family: sans-serif;}} #diagram{{display:flex;justify-content:center;}}</style>
     </head>
-    <body><div class="mermaid" id="diagram">{code}</div></body>
+    <body>
+        <div class="mermaid" id="diagram">
+            graph TD
+            {code}
+        </div>
+    </body>
     </html>
     """
     components.html(html_code, height=450, scrolling=True)
 
 def extract_mermaid_code(text):
+    # Mencoba menangkap isi mermaid
     match = re.search(r'```mermaid(.*?)```', text, re.DOTALL)
-    if match: return match.group(1).strip()
-    keywords = ["graph TD", "graph LR", "mindmap", "sequenceDiagram"]
-    for key in keywords:
-        if key in text:
-            return text[text.find(key):].split('```')[0].strip()
+    if match: 
+        code = match.group(1).strip()
+        # Hapus header graph TD jika ada, karena kita inject manual biar aman
+        code = code.replace("graph TD", "").replace("graph LR", "").strip()
+        return code
     return None
 
 def generate_audio(text):
@@ -108,14 +117,14 @@ def generate_audio(text):
             return fp.name
     except: return None
 
-# --- FUNGSI URL GAMBAR BERSIH ---
+# --- FUNGSI URL GAMBAR CLEAN ---
 def get_clean_image_url(prompt, style_model):
-    # Hapus karakter aneh, hanya sisakan huruf dan angka agar URL valid
+    # Hanya ambil huruf dan angka untuk prompt URL (Hapus simbol aneh)
     safe_prompt = re.sub(r'[^a-zA-Z0-9 ]', '', prompt)
     encoded_prompt = urllib.parse.quote(safe_prompt)
     seed = random.randint(1, 999999)
-    # Gunakan 'flux' sebagai default karena paling stabil
-    return f"[https://pollinations.ai/p/](https://pollinations.ai/p/){encoded_prompt}?width=1024&height=768&seed={seed}&model={style_model}&nologo=true"
+    # Gunakan 'flux' (paling stabil)
+    return f"https://pollinations.ai/p/{encoded_prompt}?width=1024&height=768&seed={seed}&model={style_model}&nologo=true"
 
 # ==========================================
 # 🔒 LOGIN & STATE
@@ -154,11 +163,11 @@ with st.sidebar:
     model_name = ""
 
     if provider == "Google Gemini":
-        st.caption("Versi Terbaru:")
+        st.caption("Pilihan Model:")
         model_name = st.selectbox("Versi:", [
             "gemini-2.5-flash", 
-            "gemini-2.0-flash", 
-            "gemini-2.5-pro"
+            "gemini-2.5-pro",
+            "gemini-2.0-flash"
         ])
         if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]; st.caption("✅ API Key Ready")
         else: api_key = st.text_input("Gemini Key:", type="password")
@@ -211,8 +220,8 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v32)")
-    st.info("Pilih Topik di kiri. Menggunakan Model Gemini 2.5 & Groq Llama 3.3")
+    st.title("🎓 Guru Saku Ultimate (v33)")
+    st.info("Perbaikan: Diagram Mermaid disederhanakan agar tidak Syntax Error.")
 
 # --- 4 TAB OUTPUT ---
 tab_belajar, tab_video, tab_gambar, tab_kuis = st.tabs(["📚 Materi & Diagram", "🎬 Video AI", "🎨 Ilustrasi AI", "📝 Kuis"])
@@ -227,10 +236,15 @@ with tab_belajar:
             if not api_key: st.error("API Key kosong.")
             else:
                 with st.spinner("Menulis & Menggambar Diagram..."):
+                    # Prompt Diperketat untuk Diagram
                     p = f"""
                     Jelaskan '{pilihan_bab}' dengan gaya {gaya_belajar}.
-                    WAJIB: Buat Diagram Mermaid JS (graph TD/mindmap) yang relevan.
-                    Kode diagram dalam blok ```mermaid ... ```.
+                    
+                    INSTRUKSI KHUSUS DIAGRAM:
+                    1. Buat kode Mermaid JS 'graph TD'.
+                    2. JANGAN GUNAKAN TANDA KURUNG '()' ATAU '[]' DI DALAM TEKS NODE.
+                    3. Gunakan hanya huruf dan angka sederhana.
+                    4. Kode diagram dalam blok ```mermaid ... ```.
                     """
                     full = ask_the_brain(provider, model_name, api_key, p)
                     
@@ -252,7 +266,6 @@ with tab_belajar:
 # === TAB 2: VIDEO ===
 with tab_video:
     st.header("🎬 Studio Video")
-    st.write("Dengarkan materi sambil melihat diagram konsep.")
     if st.session_state.materi_sekarang:
         if st.button("🎙️ Buat Suara Guru"):
             aud = generate_audio(st.session_state.materi_sekarang[:1000])
@@ -266,7 +279,7 @@ with tab_video:
                 if st.session_state.mermaid_code: render_mermaid(st.session_state.mermaid_code)
     else: st.warning("Buka materi di Tab 1 dulu.")
 
-# === TAB 3: GAMBAR (CLEAN URL - FLUX) ===
+# === TAB 3: GAMBAR (CLIENT SIDE) ===
 with tab_gambar:
     st.header("🎨 Ilustrasi AI (Gratis)")
     
@@ -275,32 +288,27 @@ with tab_gambar:
         default_prompt = f"Illustration of {pilihan_bab} in {st.session_state.topik_saat_ini}, educational style, detailed, 8k" if pilihan_bab else "A cute robot teacher"
         prompt_gambar = st.text_input("Prompt Gambar:", value=default_prompt)
     with col_style:
-        # PENTING: Gunakan 'flux' sebagai default karena 'midjourney' sering down
         gaya_gambar = st.selectbox("Gaya:", ["flux", "turbo", "midjourney", "anime", "3d-model"])
 
     if st.button("🖌️ Lukis Sekarang"):
-        # Kita hanya generate URL, biarkan browser yang download agar tidak diblokir server
+        # Hasilkan URL
         url_gambar = get_clean_image_url(prompt_gambar, gaya_gambar)
         st.session_state.current_image_url = url_gambar
-        st.success("Berhasil! Loading gambar...")
+        st.success("Memuat gambar dari server...")
 
     if st.session_state.current_image_url:
-        # Gunakan HTML murni <img> agar browser yang me-render
+        # Tampilkan HTML Murni
         st.markdown(f'''
             <div style="text-align: center;">
-                <img src="{st.session_state.current_image_url}" style="max-width: 100%; border-radius: 10px;">
+                <img src="{st.session_state.current_image_url}" style="max-width: 100%; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                 <br><br>
                 <a href="{st.session_state.current_image_url}" target="_blank">
                     <button style="background-color:#4CAF50; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer;">
-                        ⬇️ Buka / Download Gambar
+                        ⬇️ Buka Penuh / Simpan
                     </button>
                 </a>
             </div>
         ''', unsafe_allow_html=True)
-        
-        # Debugging Link (Jika masih putih, user bisa cek linknya)
-        with st.expander("🛠️ Debug Link (Klik jika gambar tidak muncul)"):
-            st.code(st.session_state.current_image_url)
 
 # === TAB 4: KUIS ===
 with tab_kuis:
