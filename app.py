@@ -66,9 +66,9 @@ def ask_the_brain(provider, model_name, api_key, prompt):
     except Exception as e:
         error_msg = str(e)
         if "404" in error_msg:
-            return f"⛔ **MODEL TIDAK DITEMUKAN (404)**\n\nModel `{model_name}` bermasalah. Ganti ke `gemini-1.5-flash` di menu kiri."
+            return f"⛔ **MODEL TIDAK DITEMUKAN (404)**\n\nModel `{model_name}` bermasalah. Coba ganti ke `gemini-1.5-flash` di menu kiri."
         elif "429" in error_msg:
-            return "⛔ **KUOTA GEMINI HABIS (Limit 429)**\n\nGoogle membatasi kecepatan. \n👉 **Solusi:** Tunggu 1 menit atau pindah ke **Groq**."
+            return "⛔ **KUOTA GEMINI HABIS (Limit 429)**\n\nGoogle membatasi kecepatanmu (5 request/menit). \n👉 **Solusi:** Tunggu 1 menit, atau pindah ke **Groq**."
         else:
             return f"⚠️ ERROR {provider}: {error_msg}"
 
@@ -106,14 +106,11 @@ def generate_audio(text):
             return fp.name
     except: return None
 
-# --- PERBAIKAN TOTAL FUNGSI GAMBAR ---
+# --- FUNGSI URL GAMBAR ---
 def get_image_url(prompt, style_model):
-    """
-    Hanya menghasilkan URL. Biarkan browser user yang mendownloadnya.
-    """
     clean_prompt = urllib.parse.quote(prompt)
     seed = random.randint(1, 1000000)
-    # Menggunakan endpoint 'image.pollinations.ai' yang lebih robust
+    # Kita gunakan URL langsung
     return f"[https://image.pollinations.ai/prompt/](https://image.pollinations.ai/prompt/){clean_prompt}?model={style_model}&seed={seed}&width=1024&height=768&nologo=true"
 
 # ==========================================
@@ -153,7 +150,7 @@ with st.sidebar:
     model_name = ""
 
     if provider == "Google Gemini":
-        st.caption("Jika Error 429/404, ganti model:")
+        st.caption("Model (Pilih 1.5 jika 2.5 Error):")
         model_name = st.selectbox("Versi:", [
             "gemini-2.5-flash", 
             "gemini-2.0-flash", 
@@ -180,10 +177,10 @@ with st.sidebar:
         
         with st.expander("ℹ️ Penjelasan 4 Gaya Belajar", expanded=False):
             st.markdown("""
-            1. **👶 Pemula (ELI5):** Penjelasan sangat sederhana.
-            2. **💡 Visual (Analogi):** Menggunakan perumpamaan.
-            3. **🏫 Akademis (Kuliah):** Formal dan detail.
-            4. **🚀 Praktis:** Langsung ke inti penerapan.
+            1. **👶 Pemula (ELI5):** Bahasa simpel untuk pemula.
+            2. **💡 Visual (Analogi):** Banyak perumpamaan.
+            3. **🏫 Akademis:** Formal dan detail.
+            4. **🚀 Praktis:** To-the-point dan aplikatif.
             """)
 
         if st.button("Buat Kurikulum"):
@@ -210,10 +207,10 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v25)")
-    st.info("Fitur Gambar sudah diperbaiki menggunakan Direct Link Technique.")
+    st.title("🎓 Guru Saku Ultimate (v26 - Fixed)")
+    st.info("Masalah Gambar (Error 532) sudah diperbaiki dengan HTML Injection.")
 
-# --- FITUR WAJIB: 4 TAB OUTPUT ---
+# --- 4 TAB OUTPUT ---
 tab_belajar, tab_video, tab_gambar, tab_kuis = st.tabs(["📚 Materi & Diagram", "🎬 Video AI", "🎨 Ilustrasi AI", "📝 Kuis"])
 
 # === TAB 1: MATERI ===
@@ -251,7 +248,6 @@ with tab_belajar:
 # === TAB 2: VIDEO ===
 with tab_video:
     st.header("🎬 Studio Video")
-    st.write("Dengarkan materi sambil melihat diagram konsep.")
     if st.session_state.materi_sekarang:
         if st.button("🎙️ Buat Suara Guru"):
             aud = generate_audio(st.session_state.materi_sekarang[:1000])
@@ -263,10 +259,9 @@ with tab_video:
             with c2: 
                 st.info("🖼️ Lihat")
                 if st.session_state.mermaid_code: render_mermaid(st.session_state.mermaid_code)
-                else: st.warning("Diagram belum dibuat di Tab Materi.")
-    else: st.warning("Silakan Buka Materi di Tab 1 terlebih dahulu.")
+    else: st.warning("Buka materi di Tab 1 dulu.")
 
-# === TAB 3: GAMBAR (DIRECT LINK FIX) ===
+# === TAB 3: GAMBAR (FIX HTML INJECTION) ===
 with tab_gambar:
     st.header("🎨 Ilustrasi AI (Gratis)")
     st.write("Visualisasikan materi ini dengan gambar HD.")
@@ -279,21 +274,28 @@ with tab_gambar:
         gaya_gambar = st.selectbox("Gaya:", ["flux", "midjourney", "anime", "3d-model"])
 
     if st.button("🖌️ Lukis Sekarang"):
-        # Kita hanya generate URL, tidak download file (Biar server gak kena blokir)
         url_gambar = get_image_url(prompt_gambar, gaya_gambar)
         st.session_state.current_image_url = url_gambar
-        st.success("Gambar berhasil dibuat!")
+        st.success("Gambar berhasil digenerate! Jika tidak muncul, tunggu beberapa detik.")
 
     if st.session_state.current_image_url:
-        # Tampilkan gambar langsung dari URL (Browser kamu yang ambil, bukan server Streamlit)
-        st.image(st.session_state.current_image_url, caption="Hasil Generasi AI", use_container_width=True)
+        # PERBAIKAN DI SINI: Gunakan HTML Murni, bukan st.image()
+        # Ini memaksa Browser kamu yang ambil gambarnya, bukan Server Streamlit.
+        st.markdown(f'''
+            <div style="display: flex; justify-content: center;">
+                <img src="{st.session_state.current_image_url}" alt="Generated Image" style="max-width: 100%; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+            </div>
+        ''', unsafe_allow_html=True)
         
         st.markdown(f"""
-        <a href="{st.session_state.current_image_url}" download="gambar_guru_saku.png" target="_blank">
-            <button style="background-color:#4CAF50; color:white; padding:8px 16px; border:none; border-radius:4px; cursor:pointer;">
-                ⬇️ Download Gambar (Klik Kanan > Save Image)
-            </button>
-        </a>
+        <br>
+        <div style="text-align: center;">
+            <a href="{st.session_state.current_image_url}" download="guru_saku_img.jpg" target="_blank">
+                <button style="background-color:#4CAF50; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">
+                    ⬇️ Download Gambar (Klik Kanan > Save Image)
+                </button>
+            </a>
+        </div>
         """, unsafe_allow_html=True)
 
 # === TAB 4: KUIS ===
