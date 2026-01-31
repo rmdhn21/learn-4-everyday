@@ -38,8 +38,38 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ⚙️ FUNGSI PENDUKUNG
+# ⚙️ FUNGSI PENDUKUNG (FIXED)
 # ==========================================
+
+# 1. VACUUM CLEANER JSON (BARU & CANGGIH) 🧹
+def temukan_json_murni(text):
+    """
+    Mencari array JSON [...] di dalam teks sampah apapun menggunakan Regex.
+    """
+    try:
+        # Cari pola [ ... ] yang isinya bisa apa saja (DOTALL)
+        match = re.search(r'\[.*\]', text, re.DOTALL)
+        if match:
+            json_str = match.group(0)
+            return json.loads(json_str)
+        else:
+            return None
+    except:
+        return None
+
+# 2. AUDIO MEMORY FIX (UNTUK HP) 📱
+def generate_audio_memory(text):
+    try:
+        mp3_fp = BytesIO()
+        tts = gTTS(text=text, lang='id')
+        tts.write_to_fp(mp3_fp)
+        # PENTING: Kembalikan pointer ke awal file agar bisa dibaca browser HP
+        mp3_fp.seek(0) 
+        return mp3_fp
+    except Exception as e:
+        return None
+
+# 3. VISUALISASI GRAPHVIZ
 def render_interactive_graphviz(dot_code):
     try:
         safe_code = urllib.parse.quote(dot_code)
@@ -73,6 +103,7 @@ def render_interactive_graphviz(dot_code):
         components.html(html_code, height=500, scrolling=False)
         st.caption("💡 **Zoom:** Klik tombol (+) dan (-) di pojok kiri atas diagram.")
     except:
+        st.error("Gagal render diagram interaktif. Menampilkan statis.")
         st.graphviz_chart(dot_code)
 
 def bersihkan_kode_dot(text):
@@ -88,49 +119,26 @@ def bersihkan_kode_dot(text):
 
 def ask_the_brain(provider, model_name, api_key, prompt):
     try:
-        # --- KUNCI KONSISTENSI DI SINI ---
-        # Temperature 0.1 = Sangat Konsisten (Robot)
-        # Top P 0.95 = Membatasi variasi kata
-        
         if provider == "Google Gemini":
             genai.configure(api_key=api_key)
             safety_settings = [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}, {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"}, {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"}, {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}]
             time.sleep(1)
-            
-            # SETTING SUPER STABIL
-            generation_config = genai.types.GenerationConfig(
-                temperature=0.1,  # <--- INI RAHASIANYA (Mendekati 0)
-                top_p=0.95,
-                top_k=40,
-                max_output_tokens=8192,
-            )
-            
+            # Temperature 0.1 = SANGAT KONSISTEN
+            generation_config = genai.types.GenerationConfig(temperature=0.1, top_p=0.95, top_k=40)
             model = genai.GenerativeModel(model_name, safety_settings=safety_settings, generation_config=generation_config)
             response = model.generate_content(prompt)
             return response.text
-            
         elif provider == "Groq (Super Cepat)":
             client = Groq(api_key=api_key)
             chat_completion = client.chat.completions.create(
-                messages=[{"role": "system", "content": "Kamu adalah Sistem Akademik yang Konsisten, Terstruktur, dan Baku."}, {"role": "user", "content": prompt}],
+                messages=[{"role": "system", "content": "Kamu adalah Sistem Akademik Baku."}, {"role": "user", "content": prompt}],
                 model=model_name, 
-                temperature=0.1, # <--- INI JUGA DISET RENDAH
-                top_p=0.95
+                temperature=0.1 # Konsisten
             )
             return chat_completion.choices[0].message.content
-            
     except Exception as e:
         if "429" in str(e): return "⛔ **KUOTA HABIS**\n\nTunggu 1 menit atau pakai **Groq**."
         return f"⚠️ ERROR {provider}: {str(e)}"
-
-def generate_audio_memory(text):
-    try:
-        mp3_fp = BytesIO()
-        tts = gTTS(text=text, lang='id')
-        tts.write_to_fp(mp3_fp)
-        return mp3_fp
-    except Exception as e:
-        return None
 
 def render_interactive_content(text):
     sections = re.split(r'(^##\s+.*)', text, flags=re.MULTILINE)
@@ -189,7 +197,6 @@ with st.sidebar:
             elif topik_input:
                 st.session_state.topik_saat_ini = topik_input
                 with st.spinner(f"Menyusun kurikulum..."):
-                    # Prompt Kurikulum juga dikunci agar konsisten
                     p = f"Buat 5 Judul Bab belajar '{topik_input}'. Hanya list bab. Jangan tambahkan kata pengantar. Format konsisten."
                     res = ask_the_brain(provider, model_name, api_key, p)
                     if "⛔" in res or "⚠️" in res: st.error(res) 
@@ -207,12 +214,12 @@ with st.sidebar:
 # 🖥️ AREA UTAMA
 # ==========================================
 if not st.session_state.kurikulum:
-    st.title("🎓 Guru Saku Ultimate (v44)")
-    st.info("Update: Mode Stabil (Konsistensi Tinggi) & Audio Cepat.")
+    st.title("🎓 Guru Saku Ultimate (v45)")
+    st.info("Update Fix: Audio Mobile, JSON Parser, Diagram Konsisten.")
 
 tab_belajar, tab_video, tab_kuis, tab_chat = st.tabs(["📚 Materi (Deep)", "🎬 Audio Guru", "📝 Kuis (15 Soal)", "💬 Tanya Guru"])
 
-# === TAB 1: MATERI (PROMPT KONSISTEN) ===
+# === TAB 1: MATERI ===
 with tab_belajar:
     if st.session_state.kurikulum and pilihan_bab:
         st.header(f"🎓 {st.session_state.topik_saat_ini}")
@@ -221,16 +228,14 @@ with tab_belajar:
             if not api_key: st.error("API Key kosong.")
             else:
                 with st.spinner("Menulis materi Panjang & Menggambar Diagram..."):
-                    # PROMPT DIKUNCI MATI STRUKTURNYA
                     p = f"""
                     Saya belajar '{st.session_state.topik_saat_ini}', Bab '{pilihan_bab}'.
                     Gaya: {gaya_belajar}.
                     
                     INSTRUKSI PENULISAN (JANGAN DIUBAH):
                     1. Jelaskan materi secara MENDALAM, PANJANG, dan AKADEMIS (Minimal 800 kata).
-                    2. Gunakan Bahasa Indonesia yang baku dan mengalir.
-                    3. STRUKTUR WAJIB (Ikuti Persis):
-                       - Paragraf Pengantar
+                    2. STRUKTUR WAJIB:
+                       - Pendahuluan (Tanpa Heading)
                        - ## Definisi & Konsep Dasar
                        - ## Mekanisme / Proses Utama
                        - ## Studi Kasus / Contoh Penerapan
@@ -238,7 +243,10 @@ with tab_belajar:
                        - ## Kesimpulan
                     
                     INSTRUKSI DIAGRAM: 
-                    Buat Graphviz DOT `digraph G {{...}}` di bagian paling akhir. Node style fillcolor="lightblue". Rankdir TD.
+                    Buat Graphviz DOT `digraph G {{...}}` di bagian paling akhir. 
+                    - Gunakan hanya huruf dan angka untuk ID Node (contoh: A -> B). 
+                    - Label boleh pakai spasi. 
+                    - Node style fillcolor="lightblue". Rankdir TD.
                     """
                     full = ask_the_brain(provider, model_name, api_key, p)
                     if "⛔" in full or "⚠️" in full: st.error(full)
@@ -253,7 +261,7 @@ with tab_belajar:
         if st.session_state.diagram_code: st.markdown("---"); 
         with st.expander("🔄 Ringkasan Visual"): render_interactive_graphviz(st.session_state.diagram_code)
 
-# === TAB 2: AUDIO ===
+# === TAB 2: AUDIO (HP FIX) ===
 with tab_video:
     st.header("🎬 Audio Guru")
     st.write("Dengarkan penjelasan materi ini (Text-to-Speech).")
@@ -261,30 +269,39 @@ with tab_video:
         if st.button("🎙️ Generate Suara"):
             with st.spinner("Sedang memproses suara..."):
                 clean_text = st.session_state.materi_sekarang.replace("#", "").replace("*", "").replace("- ", "")
-                audio_buffer = generate_audio_memory(clean_text[:2000])
+                # Limit 1500 karakter biar gak error di HP
+                audio_buffer = generate_audio_memory(clean_text[:1500])
                 if audio_buffer: st.session_state.audio_data = audio_buffer; st.success("Suara berhasil dibuat!")
                 else: st.error("Gagal.")
         if st.session_state.audio_data:
             c1, c2 = st.columns(2)
-            with c1: st.info("🔊 Putar Audio"); st.audio(st.session_state.audio_data, format="audio/mp3")
+            with c1: 
+                st.info("🔊 Putar Audio")
+                # Format MPEG lebih aman buat Android/iOS
+                st.audio(st.session_state.audio_data, format="audio/mpeg") 
             with c2: st.info("🖼️ Lihat Diagram"); 
             if st.session_state.diagram_code: render_interactive_graphviz(st.session_state.diagram_code)
     else: st.warning("Buka materi dulu.")
 
-# === TAB 3: KUIS ===
+# === TAB 3: KUIS (JSON PARSER FIX) ===
 with tab_kuis:
     st.header("📝 Kuis (15 Soal)")
     if st.button("🎲 Buat Kuis"):
         if not api_key: st.error("API Key?")
         elif pilihan_bab:
             with st.spinner("Membuat 15 Soal..."):
-                p = f"Buat 15 Soal Pilgan '{pilihan_bab}'. JSON Murni: [{{'question':'..','options':['A. ..','B. ..'],'answer':'A','explanation':'..'}}] no markdown."
+                p = f"Buat 15 Soal Pilgan tentang '{pilihan_bab}'. Output JSON Murni: [{{'question':'..','options':['A. ..','B. ..'],'answer':'A','explanation':'..'}}] no markdown."
                 res = ask_the_brain(provider, model_name, api_key, p)
-                try:
-                    clean = res.replace("```json","").replace("```","").strip()
-                    if '[' in clean: clean = clean[clean.find('['):clean.rfind(']')+1]
-                    st.session_state.quiz_data = json.loads(clean)
-                except: st.error("Gagal format JSON.")
+                
+                # --- PANGGIL VACUUM CLEANER JSON ---
+                data_kuis = temukan_json_murni(res)
+                
+                if data_kuis:
+                    st.session_state.quiz_data = data_kuis
+                else:
+                    st.error("Gagal membaca format soal dari AI. Coba klik 'Buat Kuis' lagi.")
+                    st.write(res) # Debugging kalau mau lihat output mentah
+
     if st.session_state.quiz_data:
         with st.form("quiz"):
             ans = {}
